@@ -91,7 +91,10 @@ class MainActivity : Activity() {
     private fun saveConsent() {
         val selected = choices.filterValues { it.isChecked }.keys
         if (!confirmation.isChecked || selected.isEmpty()) {
-            Toast.makeText(this, "Confirm your understanding and select at least one category.", Toast.LENGTH_LONG).show()
+            // Do not leave a stale earlier grant active when the owner submits an invalid scope.
+            preferences.edit().clear().apply()
+            refreshStatus()
+            Toast.makeText(this, "No consent saved. Confirm and select at least one category.", Toast.LENGTH_LONG).show()
             return
         }
         val editor = preferences.edit().putBoolean(KEY_CONFIRMED, true)
@@ -114,7 +117,7 @@ class MainActivity : Activity() {
             preferences.getBoolean(KEY_CONFIRMED, false),
             DataClass.values().filter { preferences.getBoolean(keyFor(it), false) }.toSet()
         )
-        status.text = if (consent.mayStartSnapshot()) {
+        status.text = if (consent.hasExplicitScope()) {
             "Consent preferences saved. No snapshot has started; collection is not implemented in this build."
         } else {
             "No active consent preferences. No data is collected."

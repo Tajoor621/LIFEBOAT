@@ -6,7 +6,8 @@ data class SnapshotConsent(
     val explicitlyConfirmed: Boolean,
     val selectedClasses: Set<DataClass>
 ) {
-    fun mayStartSnapshot(): Boolean =
+    /** Valid saved scope only; collection still requires a separate future action. */
+    fun hasExplicitScope(): Boolean =
         explicitlyConfirmed && selectedClasses.isNotEmpty()
 }
 
