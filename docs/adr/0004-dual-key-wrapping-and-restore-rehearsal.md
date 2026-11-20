@@ -22,6 +22,7 @@ A backup is not recoverable if the only device-held key is lost. A single passph
 
 ## Consequences
 
+- Loss or corruption of passphrase KDF metadata does not disable recovery-code unlock, provided the wrapper structure, recovery envelope, recovery code, and vault ID remain intact.
 - Loss of the passphrase does not prevent recovery if the offline code and wrapper survive.
 - Loss of both passphrase and recovery code makes the encrypted backup unrecoverable; this must be explained at setup.
 - The recovery code is equivalent to a master-key unlock credential and must be displayed/exported only through an explicit owner-controlled flow.
