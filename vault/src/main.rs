@@ -584,9 +584,10 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("PUT")
-                    .uri(
-                        "/v1/devices/00112233445566778899aabbccddeeff/objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    )
+                    .uri(concat!(
+                        "/v1/devices/00112233445566778899aabbccddeeff/objects/",
+                        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    ))
                     .body(Body::from("ciphertext"))
                     .unwrap(),
             )
@@ -609,6 +610,21 @@ mod tests {
             "chunk_size": 65_536,
             "expected_blake3": digest
         }).to_string();
+
+        let unauthenticated_large_body = app.clone().oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/v1/devices/{device_id}/objects/{}",
+                    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                ))
+                .body(Body::from(vec![0u8; MAX_OBJECT_BYTES + 1]))
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(
+            unauthenticated_large_body.status(),
+            StatusCode::UNAUTHORIZED
+        );
 
         let created = app.clone().oneshot(
             Request::builder()
@@ -644,6 +660,23 @@ mod tests {
                 .unwrap()
         ).await.unwrap();
         assert_eq!(completed.status(), StatusCode::CREATED);
+
+        let head_response = app.clone().oneshot(
+            Request::builder()
+                .method("HEAD")
+                .uri(format!(
+                    "/v1/devices/{device_id}/objects/{}",
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(head_response.status(), StatusCode::OK);
+        assert_eq!(
+            head_response.headers().get("x-lifeboat-content-blake3").unwrap(),
+            &digest
+        );
 
         let cross_device = app.oneshot(
             Request::builder()
