@@ -75,35 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         storage_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
 
-    let app = Router::new()
-        .route("/healthz", get(health))
-        .route(
-            "/v1/devices/{device_id}/objects/{object_id}",
-            put(put_object).get(get_object),
-        )
-        .route(
-            "/v1/devices/{device_id}/manifests/{snapshot_id}",
-            put(put_manifest).get(get_manifest),
-        )
-        .route(
-            "/v1/devices/{device_id}/uploads",
-            post(create_upload),
-        )
-        .route(
-            "/v1/devices/{device_id}/uploads/{upload_id}",
-            get(get_upload_status),
-        )
-        .route(
-            "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
-            put(put_upload_chunk),
-        )
-        .route(
-            "/v1/devices/{device_id}/uploads/{upload_id}/complete",
-            post(complete_upload),
-        )
-        .route_layer(middleware::from_fn_with_state(state.clone(), authenticate_request))
-        .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
-        .with_state(state);
+    let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind, "LIFEBOAT vault API listening");
@@ -115,6 +87,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+
+
+fn build_router(state: AppState) -> Router {
+        Router::new()
+            .route("/healthz", get(health))
+            .route(
+                "/v1/devices/{device_id}/objects/{object_id}",
+                put(put_object).get(get_object),
+            )
+            .route(
+                "/v1/devices/{device_id}/manifests/{snapshot_id}",
+                put(put_manifest).get(get_manifest),
+            )
+            .route(
+                "/v1/devices/{device_id}/uploads",
+                post(create_upload),
+            )
+            .route(
+                "/v1/devices/{device_id}/uploads/{upload_id}",
+                get(get_upload_status),
+            )
+            .route(
+                "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
+                put(put_upload_chunk),
+            )
+            .route(
+                "/v1/devices/{device_id}/uploads/{upload_id}/complete",
+                post(complete_upload),
+            )
+            .route_layer(middleware::from_fn_with_state(state.clone(), authenticate_request))
+            .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
+            .with_state(state)
+}
 
 async fn authenticate_request(
     State(state): State<AppState>,
@@ -511,18 +516,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_is_public_but_data_routes_require_authentication() {
-        let app = Router::new()
-            .route("/healthz", get(health))
-            .route(
-                "/v1/devices/{device_id}/objects/{object_id}",
-                put(put_object).get(get_object),
-            )
-            .route(
-                "/v1/devices/{device_id}/manifests/{snapshot_id}",
-                put(put_manifest).get(get_manifest),
-            )
-            .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
-            .with_state(test_state());
+        let app = build_router(test_state());
 
         let health_response = app
             .clone()
@@ -542,6 +536,67 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(protected_response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+
+    #[tokio::test]
+    async fn authenticated_resumable_upload_round_trip_and_device_isolation() {
+        let app = build_router(test_state());
+        let device_id = "00112233445566778899aabbccddeeff";
+        let token = "a".repeat(40);
+        let payload = vec![9u8; 65_536];
+        let digest = encode_hex(blake3::hash(&payload).as_bytes());
+        let create_body = serde_json::json!({
+            "object_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "total_size": payload.len(),
+            "chunk_size": 65_536,
+            "expected_blake3": digest
+        }).to_string();
+
+        let created = app.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/devices/{device_id}/uploads"))
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(create_body))
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(created.into_body(), 4096).await.unwrap();
+        let info: lifeboat_vault_store::UploadSessionInfo = serde_json::from_slice(&body).unwrap();
+
+        let chunk_digest = encode_hex(blake3::hash(&payload).as_bytes());
+        let uploaded = app.clone().oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/v1/devices/{device_id}/uploads/{}/chunks/0", info.upload_id))
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header("x-lifeboat-chunk-blake3", chunk_digest)
+                .body(Body::from(payload.clone()))
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(uploaded.status(), StatusCode::OK);
+
+        let completed = app.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/devices/{device_id}/uploads/{}/complete", info.upload_id))
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(completed.status(), StatusCode::CREATED);
+
+        let cross_device = app.oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/devices/ffeeddccbbaa99887766554433221100/uploads")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(cross_device.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
