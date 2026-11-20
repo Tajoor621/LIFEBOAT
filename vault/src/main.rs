@@ -136,7 +136,7 @@ async fn authenticate_request(
     let device_id = segments[2];
     let valid_route = match segments.get(3).copied() {
         Some("objects" | "manifests") => segments.len() == 5,
-        Some("uploads") => matches!(segments.len(), 4 | 5 | 6 | 7),
+        Some("uploads") => matches!(segments.len(), 4..=7),
         _ => false,
     };
     if !valid_hex_id(device_id, 32) || !valid_route {
