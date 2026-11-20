@@ -1,7 +1,7 @@
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{
-    aead::{Aead, Payload},
     KeyInit, XChaCha20Poly1305, XNonce,
+    aead::{Aead, Payload},
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
@@ -116,11 +116,7 @@ pub fn derive_backup_key(
     salt: &[u8],
     config: Argon2idConfig,
 ) -> Result<SymmetricKey, CryptoError> {
-    if salt.len() < 16
-        || salt.len() > 64
-        || passphrase.is_empty()
-        || passphrase.len() > 4096
-    {
+    if salt.len() < 16 || salt.len() > 64 || passphrase.is_empty() || passphrase.len() > 4096 {
         return Err(CryptoError::Kdf);
     }
     let params = config.validate()?;
@@ -319,7 +315,9 @@ fn make_recovery_code(secret: &[u8; KEY_LEN]) -> String {
 }
 
 fn parse_recovery_code(code: &str) -> Result<zeroize::Zeroizing<[u8; KEY_LEN]>, CryptoError> {
-    let remainder = code.strip_prefix(RECOVERY_PREFIX).ok_or(CryptoError::RecoveryCode)?;
+    let remainder = code
+        .strip_prefix(RECOVERY_PREFIX)
+        .ok_or(CryptoError::RecoveryCode)?;
     let (secret_hex, checksum_hex) = remainder.split_once('-').ok_or(CryptoError::RecoveryCode)?;
     if checksum_hex.len() != 8 {
         return Err(CryptoError::RecoveryCode);
@@ -366,8 +364,7 @@ impl KeyWrapper {
         if bytes.is_empty() || bytes.len() > MAX_WRAPPER_BYTES {
             return Err(CryptoError::WrapperFormat);
         }
-        let wrapper: Self =
-            postcard::from_bytes(bytes).map_err(|_| CryptoError::WrapperFormat)?;
+        let wrapper: Self = postcard::from_bytes(bytes).map_err(|_| CryptoError::WrapperFormat)?;
         wrapper.validate_structure()?;
         Ok(wrapper)
     }

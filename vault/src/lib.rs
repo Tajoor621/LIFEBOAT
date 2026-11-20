@@ -89,7 +89,8 @@ impl VaultStore {
         expected_digest: [u8; 32],
     ) -> Result<UploadSessionInfo, StoreError> {
         validate_id(object_id, 64)?;
-        if total_size == 0 || total_size > self.max_object_bytes
+        if total_size == 0
+            || total_size > self.max_object_bytes
             || !(64 * 1024..=1024 * 1024).contains(&chunk_size)
         {
             return Err(StoreError::TooLarge);
@@ -121,7 +122,10 @@ impl VaultStore {
             return Err(StoreError::TooLarge);
         }
         let part_path = self.upload_part_path(&upload_id);
-        let mut part = OpenOptions::new().write(true).create_new(true).open(&part_path)?;
+        let mut part = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&part_path)?;
         part.set_len(total_size)?;
         part.sync_all()?;
         File::open(self.root.join("uploads"))?.sync_all()?;
@@ -148,9 +152,7 @@ impl VaultStore {
             .ok_or(StoreError::SessionConflict)?;
         let offset = chunk_index as u64 * session.chunk_size as u64;
         let expected_len = (session.total_size - offset).min(session.chunk_size as u64) as usize;
-        if bytes.len() != expected_len
-            || blake3::hash(bytes).as_bytes() != &expected_chunk_digest
-        {
+        if bytes.len() != expected_len || blake3::hash(bytes).as_bytes() != &expected_chunk_digest {
             return Err(StoreError::DigestMismatch);
         }
         if let Some(existing) = slot {
@@ -250,7 +252,10 @@ impl VaultStore {
             .join("uploads")
             .join(format!(".{upload_id}-{}.receipt.tmp", hex_encode(&random)));
         let bytes = serde_json::to_vec(receipt).map_err(|_| StoreError::Integrity)?;
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
         drop(file);
@@ -302,15 +307,18 @@ impl VaultStore {
     }
 
     fn load_upload_session(&self, upload_id: &str) -> Result<UploadSession, StoreError> {
-        let bytes = fs::read(self.upload_session_path(upload_id))
-            .map_err(|error| if error.kind() == std::io::ErrorKind::NotFound {
+        let bytes = fs::read(self.upload_session_path(upload_id)).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
                 StoreError::SessionNotFound
             } else {
                 StoreError::Io(error)
-            })?;
+            }
+        })?;
         let session: UploadSession =
             serde_json::from_slice(&bytes).map_err(|_| StoreError::Integrity)?;
-        let expected_chunks = session.total_size.div_ceil(session.chunk_size.max(1) as u64);
+        let expected_chunks = session
+            .total_size
+            .div_ceil(session.chunk_size.max(1) as u64);
         if session.total_size == 0
             || session.total_size > self.max_object_bytes
             || !(64 * 1024..=1024 * 1024).contains(&session.chunk_size)
@@ -345,7 +353,10 @@ impl VaultStore {
             .join("uploads")
             .join(format!(".{upload_id}-{}.tmp", hex_encode(&random)));
         let bytes = serde_json::to_vec(session).map_err(|_| StoreError::Integrity)?;
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
         drop(file);
@@ -386,9 +397,8 @@ impl VaultStore {
         if metadata.len() > self.max_object_bytes {
             return Err(StoreError::TooLarge);
         }
-        let mut bytes = Vec::with_capacity(
-            usize::try_from(metadata.len()).map_err(|_| StoreError::TooLarge)?,
-        );
+        let mut bytes =
+            Vec::with_capacity(usize::try_from(metadata.len()).map_err(|_| StoreError::TooLarge)?);
         File::open(path)?
             .take(self.max_object_bytes.saturating_add(1))
             .read_to_end(&mut bytes)?;
@@ -398,11 +408,7 @@ impl VaultStore {
         Ok((metadata.len(), *blake3::hash(&bytes).as_bytes()))
     }
 
-    pub fn get_object(
-        &self,
-        id: &str,
-        expected_blake3: [u8; 32],
-    ) -> Result<Vec<u8>, StoreError> {
+    pub fn get_object(&self, id: &str, expected_blake3: [u8; 32]) -> Result<Vec<u8>, StoreError> {
         self.get_verified("objects", id, 64, expected_blake3)
     }
 
@@ -463,7 +469,7 @@ impl VaultStore {
             Ok(()) => {
                 File::open(&dir)?.sync_all()?;
                 Ok(*blake3::hash(bytes).as_bytes())
-            },
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 Err(StoreError::AlreadyExists)
             }
@@ -501,14 +507,19 @@ impl VaultStore {
 }
 
 fn upload_info(upload_id: &str, session: &UploadSession) -> UploadSessionInfo {
-    let received_bytes = session.chunks.iter().enumerate().fold(0u64, |total, (index, chunk)| {
-        if chunk.is_some() {
-            total + (session.total_size - index as u64 * session.chunk_size as u64)
-                .min(session.chunk_size as u64)
-        } else {
-            total
-        }
-    });
+    let received_bytes = session
+        .chunks
+        .iter()
+        .enumerate()
+        .fold(0u64, |total, (index, chunk)| {
+            if chunk.is_some() {
+                total
+                    + (session.total_size - index as u64 * session.chunk_size as u64)
+                        .min(session.chunk_size as u64)
+            } else {
+                total
+            }
+        });
     UploadSessionInfo {
         upload_id: upload_id.to_owned(),
         object_id: session.object_id.clone(),
@@ -597,8 +608,14 @@ mod tests {
                 *blake3::hash(second).as_bytes(),
             )
             .unwrap();
-        assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
-        assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
+        assert_eq!(
+            reopened.complete_upload(&session.upload_id).unwrap(),
+            digest
+        );
+        assert_eq!(
+            reopened.complete_upload(&session.upload_id).unwrap(),
+            digest
+        );
         assert_eq!(reopened.get_object(&object_id, digest).unwrap(), payload);
     }
 
@@ -622,13 +639,7 @@ mod tests {
             .unwrap();
         store.put_object(&object_id, &payload).unwrap();
         store
-            .save_upload_receipt(
-                &session.upload_id,
-                &UploadReceipt {
-                    object_id,
-                    digest,
-                },
-            )
+            .save_upload_receipt(&session.upload_id, &UploadReceipt { object_id, digest })
             .unwrap();
         fs::remove_file(store.upload_part_path(&session.upload_id)).unwrap();
 
@@ -679,7 +690,9 @@ mod tests {
             Err(StoreError::DigestMismatch)
         ));
         let digest = *blake3::hash(&payload).as_bytes();
-        store.put_upload_chunk(&session.upload_id, 0, &payload, digest).unwrap();
+        store
+            .put_upload_chunk(&session.upload_id, 0, &payload, digest)
+            .unwrap();
         let conflicting = vec![4u8; 65_536];
         assert!(matches!(
             store.put_upload_chunk(
@@ -699,7 +712,10 @@ mod tests {
         let payload = b"already encrypted";
         let id = "ac".repeat(32);
         let expected = store.put_object(&id, payload).unwrap();
-        assert_eq!(store.object_metadata(&id).unwrap(), (payload.len() as u64, expected));
+        assert_eq!(
+            store.object_metadata(&id).unwrap(),
+            (payload.len() as u64, expected)
+        );
     }
 
     #[test]

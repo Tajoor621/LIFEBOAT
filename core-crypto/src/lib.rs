@@ -8,13 +8,13 @@ mod manifest;
 mod restore;
 
 pub use crypto::{
-    create_key_wrapper, derive_backup_key, derive_object_id_key, generate_symmetric_key,
-    hash_bytes, open, seal, sign, unlock_with_passphrase, unlock_with_recovery_code, verify,
-    Argon2idConfig, CiphertextEnvelope, CreatedKeyWrapper, CryptoError, DedupKey,
-    IdentityKeypair, KeyWrapper, RecoveryKit, SymmetricKey,
+    Argon2idConfig, CiphertextEnvelope, CreatedKeyWrapper, CryptoError, DedupKey, IdentityKeypair,
+    KeyWrapper, RecoveryKit, SymmetricKey, create_key_wrapper, derive_backup_key,
+    derive_object_id_key, generate_symmetric_key, hash_bytes, open, seal, sign,
+    unlock_with_passphrase, unlock_with_recovery_code, verify,
 };
 pub use manifest::{DataClass, Manifest, ManifestEntry, ManifestError, ObjectId};
-pub use restore::{run_restore_rehearsal, RestoreError, RestoreRehearsalReport};
+pub use restore::{RestoreError, RestoreRehearsalReport, run_restore_rehearsal};
 
 #[cfg(test)]
 mod tests {
@@ -73,12 +73,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            derive_backup_key(
-                &vec![b'x'; 4097],
-                &[1u8; 16],
-                Argon2idConfig::default(),
-            )
-            .is_err()
+            derive_backup_key(&vec![b'x'; 4097], &[1u8; 16], Argon2idConfig::default(),).is_err()
         );
     }
 
@@ -111,13 +106,9 @@ mod tests {
             iterations: 1,
             parallelism: 1,
         };
-        let created = create_key_wrapper(
-            &master,
-            [0x42; 16],
-            b"correct horse battery staple",
-            config,
-        )
-        .unwrap();
+        let created =
+            create_key_wrapper(&master, [0x42; 16], b"correct horse battery staple", config)
+                .unwrap();
 
         let encoded = created.wrapper.encode().unwrap();
         assert!(!String::from_utf8_lossy(&encoded).contains(created.recovery_kit.recovery_code()));
@@ -125,34 +116,31 @@ mod tests {
 
         let passphrase_unlocked =
             unlock_with_passphrase(&decoded, b"correct horse battery staple").unwrap();
-        let recovery_unlocked = unlock_with_recovery_code(
-            &decoded,
-            created.recovery_kit.recovery_code(),
-        )
-        .unwrap();
+        let recovery_unlocked =
+            unlock_with_recovery_code(&decoded, created.recovery_kit.recovery_code()).unwrap();
         assert_eq!(master.bytes(), passphrase_unlocked.bytes());
         assert_eq!(master.bytes(), recovery_unlocked.bytes());
 
         let mut damaged_kdf = decoded.clone();
         damaged_kdf.kdf.memory_kib = 1;
         assert!(unlock_with_passphrase(&damaged_kdf, b"correct horse battery staple").is_err());
-        let recovery_after_kdf_damage = unlock_with_recovery_code(
-            &damaged_kdf,
-            created.recovery_kit.recovery_code(),
-        )
-        .unwrap();
+        let recovery_after_kdf_damage =
+            unlock_with_recovery_code(&damaged_kdf, created.recovery_kit.recovery_code()).unwrap();
         assert_eq!(master.bytes(), recovery_after_kdf_damage.bytes());
 
         let mut wrong_vault = decoded.clone();
         wrong_vault.vault_id[0] ^= 1;
         assert!(unlock_with_passphrase(&wrong_vault, b"correct horse battery staple").is_err());
-        assert!(unlock_with_recovery_code(
-            &wrong_vault,
-            created.recovery_kit.recovery_code()
-        )
-        .is_err());
+        assert!(
+            unlock_with_recovery_code(&wrong_vault, created.recovery_kit.recovery_code()).is_err()
+        );
 
-        assert!(created.recovery_kit.printable_text().contains("Recovery code:"));
+        assert!(
+            created
+                .recovery_kit
+                .printable_text()
+                .contains("Recovery code:")
+        );
         assert!(created.recovery_kit.printable_text().contains('\n'));
     }
 
@@ -317,7 +305,12 @@ mod tests {
             &dedup,
             scratch.path(),
             0,
-            |id| chunks.get(&id).cloned().ok_or(RestoreError::Source("missing chunk".into())),
+            |id| {
+                chunks
+                    .get(&id)
+                    .cloned()
+                    .ok_or(RestoreError::Source("missing chunk".into()))
+            },
             |class, path| {
                 let bytes = fs::read(path).map_err(|error| error.to_string())?;
                 if class == DataClass::Contacts && bytes == expected {

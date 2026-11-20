@@ -81,8 +81,7 @@ impl Manifest {
             previous = Some(key);
 
             if entry.plaintext_size > MAX_CHUNK_BYTES
-                || entry.plaintext_size.checked_add(AEAD_TAG_BYTES)
-                    != Some(entry.ciphertext_size)
+                || entry.plaintext_size.checked_add(AEAD_TAG_BYTES) != Some(entry.ciphertext_size)
             {
                 return Err(ManifestError::InvalidChunkSize);
             }

@@ -162,11 +162,7 @@ where
                     .ok_or(RestoreError::ChunkMismatch)?;
             }
 
-            let file_name = format!(
-                "{}_{}.restore",
-                class_name(*class),
-                hex_item_id(item_id)
-            );
+            let file_name = format!("{}_{}.restore", class_name(*class), hex_item_id(item_id));
             let path = scratch_dir.join(file_name);
             let mut file = OpenOptions::new()
                 .write(true)

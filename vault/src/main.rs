@@ -8,13 +8,13 @@ use std::{
 };
 
 use axum::{
+    Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Json, Path, Request, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post, put},
-    Router,
 };
 use subtle::ConstantTimeEq;
 
@@ -51,10 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let token_config = env::var("LIFEBOAT_DEVICE_TOKENS")
-        .map_err(|_| {
-            "LIFEBOAT_DEVICE_TOKENS is required; refusing to start without device credentials"
-        })?;
+    let token_config = env::var("LIFEBOAT_DEVICE_TOKENS").map_err(
+        |_| "LIFEBOAT_DEVICE_TOKENS is required; refusing to start without device credentials",
+    )?;
     let device_token_hashes = parse_device_tokens(&token_config)?;
     if device_token_hashes.is_empty() {
         return Err("at least one device credential must be configured".into());
@@ -87,7 +86,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     Ok(())
 }
-
 
 fn build_router(state: AppState) -> Router {
     Router::new()
@@ -225,11 +223,8 @@ fn authorized_store(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    VaultStore::open(
-        state.root.join("devices").join(device_id),
-        MAX_STORED_BYTES,
-    )
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    VaultStore::open(state.root.join("devices").join(device_id), MAX_STORED_BYTES)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn put_object(
@@ -405,7 +400,9 @@ async fn get_upload_status(
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
     let store = authorized_store(&state, &device_id, &headers)?;
-    let info = store.upload_session_info(&upload_id).map_err(map_store_error)?;
+    let info = store
+        .upload_session_info(&upload_id)
+        .map_err(map_store_error)?;
     Ok(Json(info).into_response())
 }
 
@@ -663,8 +660,7 @@ mod tests {
         let body = axum::body::to_bytes(created.into_body(), 4096)
             .await
             .unwrap();
-        let info: lifeboat_vault_store::UploadSessionInfo =
-            serde_json::from_slice(&body).unwrap();
+        let info: lifeboat_vault_store::UploadSessionInfo = serde_json::from_slice(&body).unwrap();
 
         let chunk_digest = encode_hex(blake3::hash(&payload).as_bytes());
         let uploaded = app
