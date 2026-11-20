@@ -17,6 +17,8 @@ pub enum RestoreError {
     InvalidManifest,
     #[error("selected restore set is empty")]
     EmptySelection,
+    #[error("restore rehearsal exceeds configured resource limits")]
+    ResourceLimit,
     #[error("restored chunk does not match the manifest")]
     ChunkMismatch,
     #[error("restore source failed: {0}")]
@@ -106,7 +108,7 @@ where
         return Err(RestoreError::EmptySelection);
     }
     if contacts.len().saturating_add(others.len()) > MAX_REHEARSAL_ITEMS {
-        return Err(RestoreError::ChunkMismatch);
+        return Err(RestoreError::ResourceLimit);
     }
 
     let mut selected = contacts;
@@ -145,12 +147,12 @@ where
                     return Err(RestoreError::ChunkMismatch);
                 }
                 if restored.len().saturating_add(plaintext.len()) > MAX_REHEARSAL_ITEM_BYTES {
-                    return Err(RestoreError::ChunkMismatch);
+                    return Err(RestoreError::ResourceLimit);
                 }
                 if report.verified_bytes.saturating_add(plaintext.len() as u64)
                     > MAX_REHEARSAL_TOTAL_BYTES
                 {
-                    return Err(RestoreError::ChunkMismatch);
+                    return Err(RestoreError::ResourceLimit);
                 }
                 restored.extend_from_slice(&plaintext);
                 report.verified_chunks += 1;
