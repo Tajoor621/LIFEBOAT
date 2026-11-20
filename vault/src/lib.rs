@@ -57,6 +57,7 @@ pub struct UploadSessionInfo {
     pub chunk_size: u32,
     pub received_bytes: u64,
     pub chunk_count: usize,
+    pub completed_chunks: Vec<usize>,
 }
 
 pub struct VaultStore {
@@ -516,6 +517,12 @@ fn upload_info(upload_id: &str, session: &UploadSession) -> UploadSessionInfo {
         chunk_size: session.chunk_size,
         received_bytes,
         chunk_count: session.chunks.len(),
+        completed_chunks: session
+            .chunks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, chunk)| chunk.as_ref().map(|_| index))
+            .collect(),
     }
 }
 
@@ -571,6 +578,13 @@ mod tests {
                 .unwrap()
                 .received_bytes,
             65_536
+        );
+        assert_eq!(
+            reopened
+                .upload_session_info(&session.upload_id)
+                .unwrap()
+                .completed_chunks,
+            vec![0]
         );
         assert!(matches!(
             reopened.complete_upload(&session.upload_id),
