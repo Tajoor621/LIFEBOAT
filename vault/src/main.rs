@@ -674,8 +674,13 @@ mod tests {
         ).await.unwrap();
         assert_eq!(head_response.status(), StatusCode::OK);
         assert_eq!(
-            head_response.headers().get("x-lifeboat-content-blake3").unwrap(),
-            &digest
+            head_response
+                .headers()
+                .get("x-lifeboat-content-blake3")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            digest
         );
 
         let cross_device = app.oneshot(
