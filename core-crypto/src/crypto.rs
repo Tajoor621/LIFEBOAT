@@ -254,7 +254,13 @@ impl RecoveryKit {
     /// owner-controlled export flow and warn that anyone holding it can unlock the vault.
     pub fn printable_text(&self) -> String {
         format!(
-            "LIFEBOAT RECOVERY KIT\nVault ID: {}\nRecovery code: {}\n\nStore offline in a secure place. Anyone with this code can unlock this vault.\nDo not photograph, email, or upload this page. Test recovery before relying on it.",
+            concat!(
+                "LIFEBOAT RECOVERY KIT\\n",
+                "Vault ID: {}\\n",
+                "Recovery code: {}\\n\\n",
+                "Store offline in a secure place. Anyone with this code can unlock this vault.\\n",
+                "Do not photograph, email, or upload this page. Test recovery before relying on it."
+            ),
             encode_hex(&self.vault_id),
             self.recovery_code
         )
