@@ -5,6 +5,7 @@
 
 mod crypto;
 mod manifest;
+mod restore;
 
 pub use crypto::{
     create_key_wrapper, derive_backup_key, derive_object_id_key, generate_symmetric_key,
@@ -13,6 +14,7 @@ pub use crypto::{
     IdentityKeypair, KeyWrapper, RecoveryKit, SymmetricKey,
 };
 pub use manifest::{DataClass, Manifest, ManifestEntry, ManifestError, ObjectId};
+pub use restore::{run_restore_rehearsal, RestoreError, RestoreRehearsalReport};
 
 #[cfg(test)]
 mod tests {
@@ -153,6 +155,108 @@ mod tests {
         let encoded = created.wrapper.encode().unwrap();
         assert!(KeyWrapper::decode(&encoded[..encoded.len() - 1]).is_err());
         assert!(KeyWrapper::decode(&vec![0u8; 4097]).is_err());
+    }
+
+
+    #[test]
+    fn restore_rehearsal_restores_all_contacts_and_validates_sampled_items() {
+        use std::{collections::HashMap, fs};
+
+        let master = generate_symmetric_key().unwrap();
+        let dedup = derive_object_id_key(&master);
+        let contacts = b"BEGIN:VCARD\\nVERSION:4.0\\nFN:Test Owner\\nEND:VCARD\\n".to_vec();
+        let photo = b"sample image payload".to_vec();
+        let contacts_id = dedup.identify(&contacts);
+        let photo_id = dedup.identify(&photo);
+        let mut chunks = HashMap::new();
+        chunks.insert(contacts_id, contacts.clone());
+        chunks.insert(photo_id, photo.clone());
+
+        let manifest = Manifest {
+            format_version: 1,
+            snapshot_id: [1; 16],
+            device_id: [2; 16],
+            created_at_unix_ms: 1234,
+            entries: vec![
+                ManifestEntry {
+                    data_class: DataClass::Contacts,
+                    item_id: [3; 16],
+                    chunk_index: 0,
+                    object_id: contacts_id,
+                    plaintext_size: contacts.len() as u64,
+                    ciphertext_size: contacts.len() as u64 + 16,
+                    source_modified_unix_ms: None,
+                },
+                ManifestEntry {
+                    data_class: DataClass::Photos,
+                    item_id: [4; 16],
+                    chunk_index: 0,
+                    object_id: photo_id,
+                    plaintext_size: photo.len() as u64,
+                    ciphertext_size: photo.len() as u64 + 16,
+                    source_modified_unix_ms: None,
+                },
+            ],
+        };
+
+        let scratch = tempfile::tempdir().unwrap();
+        let report = run_restore_rehearsal(
+            &manifest,
+            &dedup,
+            scratch.path(),
+            1,
+            |id| chunks.get(&id).cloned().ok_or(RestoreError::Source("missing test object".into())),
+            |class, path| {
+                let bytes = fs::read(path).map_err(|error| error.to_string())?;
+                match class {
+                    DataClass::Contacts if bytes.starts_with(b"BEGIN:VCARD\\n") && bytes.ends_with(b"END:VCARD\\n") => Ok(()),
+                    DataClass::Photos if bytes == photo => Ok(()),
+                    _ => Err("test parser rejected restored item".into()),
+                }
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.verified_items, 2);
+        assert_eq!(report.verified_chunks, 2);
+        assert!(report.contacts_present);
+        assert!(report.all_contacts_verified);
+        assert_eq!(report.sampled_non_contact_items, 1);
+        assert_eq!(report.restored_files.len(), 2);
+    }
+
+    #[test]
+    fn restore_rehearsal_rejects_corrupt_plaintext_and_cleans_scratch_files() {
+        let master = generate_symmetric_key().unwrap();
+        let dedup = derive_object_id_key(&master);
+        let payload = b"expected contact".to_vec();
+        let id = dedup.identify(&payload);
+        let manifest = Manifest {
+            format_version: 1,
+            snapshot_id: [1; 16],
+            device_id: [2; 16],
+            created_at_unix_ms: 1234,
+            entries: vec![ManifestEntry {
+                data_class: DataClass::Contacts,
+                item_id: [3; 16],
+                chunk_index: 0,
+                object_id: id,
+                plaintext_size: payload.len() as u64,
+                ciphertext_size: payload.len() as u64 + 16,
+                source_modified_unix_ms: None,
+            }],
+        };
+        let scratch = tempfile::tempdir().unwrap();
+        let result = run_restore_rehearsal(
+            &manifest,
+            &dedup,
+            scratch.path(),
+            0,
+            |_| Ok(b"tampered".to_vec()),
+            |_, _| Ok(()),
+        );
+        assert!(matches!(result, Err(RestoreError::ChunkMismatch)));
+        assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
     }
 
     #[test]
