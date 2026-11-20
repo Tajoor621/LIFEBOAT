@@ -7,6 +7,10 @@ use std::{
 
 use crate::{DataClass, DedupKey, Manifest, ObjectId};
 
+const MAX_REHEARSAL_ITEMS: usize = 100_000;
+const MAX_REHEARSAL_ITEM_BYTES: usize = 512 * 1024 * 1024;
+const MAX_REHEARSAL_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RestoreError {
     #[error("snapshot manifest is invalid")]
@@ -101,6 +105,9 @@ where
     if contacts.is_empty() && others.is_empty() {
         return Err(RestoreError::EmptySelection);
     }
+    if contacts.len().saturating_add(others.len()) > MAX_REHEARSAL_ITEMS {
+        return Err(RestoreError::ChunkMismatch);
+    }
 
     let mut selected = contacts;
     selected.extend(others);
@@ -134,6 +141,14 @@ where
                 let plaintext = resolve_chunk(entry.object_id)?;
                 if plaintext.len() as u64 != entry.plaintext_size
                     || dedup_key.identify(&plaintext) != entry.object_id
+                {
+                    return Err(RestoreError::ChunkMismatch);
+                }
+                if restored.len().saturating_add(plaintext.len()) > MAX_REHEARSAL_ITEM_BYTES {
+                    return Err(RestoreError::ChunkMismatch);
+                }
+                if report.verified_bytes.saturating_add(plaintext.len() as u64)
+                    > MAX_REHEARSAL_TOTAL_BYTES
                 {
                     return Err(RestoreError::ChunkMismatch);
                 }
