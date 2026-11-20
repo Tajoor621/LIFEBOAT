@@ -59,6 +59,17 @@ mod tests {
             parallelism: 1,
         };
         assert!(derive_backup_key(b"passphrase", &[1u8; 16], config).is_err());
+        assert!(derive_backup_key(b"passphrase", &[1u8; 16], Argon2idConfig {
+            memory_kib: 262_144,
+            iterations: 10,
+            parallelism: 8,
+        }).is_err());
+        assert!(derive_backup_key(
+            &vec![b'x'; 4097],
+            &[1u8; 16],
+            Argon2idConfig::default()
+        )
+        .is_err());
     }
 
     #[test]
