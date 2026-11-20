@@ -133,8 +133,9 @@ mod tests {
 
         assert!(unlock_with_passphrase(&created.wrapper, b"wrong passphrase").is_err());
         let mut damaged = created.recovery_kit.recovery_code().to_owned();
+        let replacement = if damaged.ends_with('0') { '1' } else { '0' };
         damaged.pop();
-        damaged.push('0');
+        damaged.push(replacement);
         assert!(unlock_with_recovery_code(&created.wrapper, &damaged).is_err());
     }
 
