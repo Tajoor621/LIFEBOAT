@@ -615,7 +615,7 @@ mod tests {
             "object_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "total_size": payload.len(),
             "chunk_size": 65_536,
-            "expected_blake3": digest
+            "expected_blake3": digest.clone()
         })
         .to_string();
 
