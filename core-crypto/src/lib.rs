@@ -112,6 +112,16 @@ mod tests {
         .unwrap();
         assert_eq!(master.bytes(), passphrase_unlocked.bytes());
         assert_eq!(master.bytes(), recovery_unlocked.bytes());
+
+        let mut wrong_vault = decoded.clone();
+        wrong_vault.vault_id[0] ^= 1;
+        assert!(unlock_with_passphrase(&wrong_vault, b"correct horse battery staple").is_err());
+        assert!(unlock_with_recovery_code(
+            &wrong_vault,
+            created.recovery_kit.recovery_code()
+        )
+        .is_err());
+
         assert!(created.recovery_kit.printable_text().contains("Recovery code:"));
         assert!(created.recovery_kit.printable_text().contains('\n'));
     }
