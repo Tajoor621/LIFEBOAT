@@ -182,19 +182,18 @@ impl VaultStore {
     pub fn complete_upload(&self, upload_id: &str) -> Result<[u8; 32], StoreError> {
         validate_id(upload_id, 32)?;
         let session_path = self.upload_session_path(upload_id);
-        if !session_path.exists() {
-            let receipt_path = self.upload_receipt_path(upload_id);
-            let receipt_bytes = fs::read(receipt_path).map_err(|error| {
-                if error.kind() == std::io::ErrorKind::NotFound {
-                    StoreError::SessionNotFound
-                } else {
-                    StoreError::Io(error)
-                }
-            })?;
+        let receipt_path = self.upload_receipt_path(upload_id);
+        if receipt_path.exists() {
+            let receipt_bytes = fs::read(&receipt_path)?;
             let receipt: UploadReceipt =
                 serde_json::from_slice(&receipt_bytes).map_err(|_| StoreError::Integrity)?;
             self.get_object(&receipt.object_id, receipt.digest)?;
+            let _ = fs::remove_file(self.upload_part_path(upload_id));
+            let _ = fs::remove_file(session_path);
             return Ok(receipt.digest);
+        }
+        if !session_path.exists() {
+            return Err(StoreError::SessionNotFound);
         }
         let session = self.load_upload_session(upload_id)?;
         if session.chunks.iter().any(Option::is_none) {
@@ -601,6 +600,40 @@ mod tests {
         assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
         assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
         assert_eq!(reopened.get_object(&object_id, digest).unwrap(), payload);
+    }
+
+    #[test]
+    fn completion_recovers_if_crash_occurs_during_session_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = VaultStore::open(dir.path(), 2 * 1024 * 1024).unwrap();
+        let payload = vec![5u8; 65_536];
+        let digest = *blake3::hash(&payload).as_bytes();
+        let object_id = "ef".repeat(32);
+        let session = store
+            .create_upload_session(&object_id, payload.len() as u64, 65_536, digest)
+            .unwrap();
+        store
+            .put_upload_chunk(
+                &session.upload_id,
+                0,
+                &payload,
+                *blake3::hash(&payload).as_bytes(),
+            )
+            .unwrap();
+        store.put_object(&object_id, &payload).unwrap();
+        store
+            .save_upload_receipt(
+                &session.upload_id,
+                &UploadReceipt {
+                    object_id,
+                    digest,
+                },
+            )
+            .unwrap();
+        fs::remove_file(store.upload_part_path(&session.upload_id)).unwrap();
+
+        assert_eq!(store.complete_upload(&session.upload_id).unwrap(), digest);
+        assert!(!store.upload_session_path(&session.upload_id).exists());
     }
 
     #[test]
