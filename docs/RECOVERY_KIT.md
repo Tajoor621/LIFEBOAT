@@ -9,7 +9,7 @@ The vault master key is 256 random bits. The client stores a versioned `KeyWrapp
 1. A passphrase envelope, protected by an Argon2id-derived key with a random 16-byte salt and persisted KDF parameters.
 2. An offline recovery envelope, protected by an independently generated 256-bit recovery secret.
 
-The server receives neither the master key, passphrase, nor recovery secret. The wrapper stores the KDF parameters and random 16-byte salt. Passphrase unlock validates and applies the bounded KDF metadata; recovery-code unlock validates the wrapper structure without depending on those KDF settings, so damaged passphrase metadata cannot disable the independent offline recovery path. Store the wrapper in owner-controlled client storage and back it up separately from the encrypted data. The wrapper binds both envelopes to the vault ID and slot-specific associated data.
+The server receives neither the master key, passphrase, nor recovery secret. The wrapper stores the KDF parameters and random 16-byte salt. The accepted Argon2id bounds are 8–128 MiB, 1–6 iterations, and 1–4 lanes; passphrases are limited to 4 KiB. Passphrase unlock validates and applies the bounded KDF metadata; recovery-code unlock validates the wrapper structure without depending on those KDF settings, so damaged passphrase metadata cannot disable the independent offline recovery path. Store the wrapper in owner-controlled client storage and back it up separately from the encrypted data. The wrapper binds both envelopes to the vault ID and slot-specific associated data.
 
 ## Recovery code format
 
