@@ -55,11 +55,12 @@ impl Default for Argon2idConfig {
 
 impl Argon2idConfig {
     fn validate(self) -> Result<Params, CryptoError> {
-        if self.memory_kib > 262_144
+        if self.memory_kib < 8192
+            || self.memory_kib > 131_072
             || self.iterations == 0
-            || self.iterations > 10
+            || self.iterations > 6
             || self.parallelism == 0
-            || self.parallelism > 8
+            || self.parallelism > 4
             || self.memory_kib < self.parallelism.saturating_mul(8)
         {
             return Err(CryptoError::Kdf);
