@@ -71,12 +71,14 @@ mod tests {
             )
             .is_err()
         );
-        assert!(derive_backup_key(
-            &vec![b'x'; 4097],
-            &[1u8; 16],
-            Argon2idConfig::default()
-        )
-        .is_err());
+        assert!(
+            derive_backup_key(
+                &vec![b'x'; 4097],
+                &[1u8; 16],
+                Argon2idConfig::default(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -293,6 +295,41 @@ mod tests {
             |_, _| Ok(()),
         );
         assert!(matches!(result, Err(RestoreError::ChunkMismatch)));
+        assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
+    }
+
+
+    #[test]
+    fn restore_rehearsal_rejects_parser_failure_and_removes_scratch_file() {
+        let master = generate_symmetric_key().unwrap();
+        let dedup = derive_object_id_key(&master);
+        let payload = b"valid hash but invalid contact format".to_vec();
+        let id = dedup.identify(&payload);
+        let manifest = Manifest {
+            format_version: 1,
+            snapshot_id: [1; 16],
+            device_id: [2; 16],
+            created_at_unix_ms: 1234,
+            entries: vec![ManifestEntry {
+                data_class: DataClass::Contacts,
+                item_id: [3; 16],
+                chunk_index: 0,
+                object_id: id,
+                plaintext_size: payload.len() as u64,
+                ciphertext_size: payload.len() as u64 + 16,
+                source_modified_unix_ms: None,
+            }],
+        };
+        let scratch = tempfile::tempdir().unwrap();
+        let result = run_restore_rehearsal(
+            &manifest,
+            &dedup,
+            scratch.path(),
+            0,
+            |_| Ok(payload.clone()),
+            |_, _| Err("VCF parser rejected item".into()),
+        );
+        assert!(matches!(result, Err(RestoreError::InvalidItem(_))));
         assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
     }
 
