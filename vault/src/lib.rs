@@ -122,7 +122,7 @@ impl VaultStore {
             return Err(StoreError::TooLarge);
         }
         let part_path = self.upload_part_path(&upload_id);
-        let mut part = OpenOptions::new()
+        let part = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&part_path)?;

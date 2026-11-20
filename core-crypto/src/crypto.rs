@@ -150,7 +150,7 @@ pub fn seal(
         XChaCha20Poly1305::new_from_slice(key.bytes()).map_err(|_| CryptoError::InvalidKey)?;
     let ciphertext = cipher
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             Payload {
                 msg: plaintext,
                 aad: associated_data,
@@ -176,7 +176,7 @@ pub fn open(
         XChaCha20Poly1305::new_from_slice(key.bytes()).map_err(|_| CryptoError::InvalidKey)?;
     cipher
         .decrypt(
-            XNonce::from_slice(&envelope.nonce),
+            &XNonce::from(envelope.nonce),
             Payload {
                 msg: envelope.ciphertext.as_ref(),
                 aad: associated_data,
@@ -324,7 +324,8 @@ fn parse_recovery_code(code: &str) -> Result<zeroize::Zeroizing<[u8; KEY_LEN]>, 
     }
     let secret = zeroize::Zeroizing::new(decode_hex::<KEY_LEN>(secret_hex)?);
     let checksum = decode_hex::<4>(checksum_hex)?;
-    let actual_checksum = &blake3::hash(&*secret).as_bytes()[..4];
+    let checksum_hash = blake3::hash(&*secret);
+    let actual_checksum = &checksum_hash.as_bytes()[..4];
     if actual_checksum != checksum.as_slice() {
         return Err(CryptoError::RecoveryCode);
     }
