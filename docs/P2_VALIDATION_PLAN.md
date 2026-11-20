@@ -1,38 +1,30 @@
 # P2 validation plan
 
-## P2.0–P2.1 automated gates
+## P2.0–P2.2 automated gates
 
 - JDK 17 and Gradle 8.9 build the Android module.
-- Unit tests verify explicit opt-in, non-empty scope, and conservative permission-state handling.
-- Android lint runs.
-- Debug APK assembly succeeds.
-- Manifest review confirms no data permissions, network access, services, receivers, device-admin, accessibility, or notification-listener components.
-- Review consent-screen fresh-install defaults, persistence, and withdrawal behavior.
+- Unit tests verify explicit opt-in, non-empty scope, conservative permission-state handling, and VCF 4.0 escaping/Unicode.
+- Android lint runs and the debug APK assembles.
+- Manifest validation allows only `READ_CONTACTS` in P2.2; no network permission, services, receivers, providers, device-admin, accessibility, or notification-listener components.
+- Fresh-install defaults, permission request timing, saved scope, withdrawal, and local export are manually reviewed.
 
-## P2.2–P2.6 required tests
+## P2.2 device validation required
 
-### Permission and consent
-- Fresh install performs zero collection and makes zero permission requests.
-- Deny, permanently deny, revoke in Settings, and grant after denial are represented distinctly.
-- Selecting one data class never implicitly enables another.
-- App restart and device reboot do not silently start collection.
+- Empty address book, 50k contacts, duplicate numbers, Unicode names, organizations, multiple accounts, and provider cursor behavior.
+- Deny permission; deny twice; revoke in Settings; grant after denial; verify no query without a current grant.
+- Revoke permission while a large query is running; snapshot must fail and remove its incomplete staging file.
+- Force-stop/restart during export; no incomplete artifact may be marked complete.
+- Export through Android document picker; compare destination SHA-256 and byte count with the in-app evidence.
+- Verify the VCF in two independent contact importers; test multiline, comma, semicolon, backslash, and Unicode values.
+- Confirm no personal data appears in logs, shared preferences, evidence JSON, crash reports, or network requests.
 
-### Contacts
-- Empty address book, 50k contacts, duplicate numbers, Unicode names, organizations, multiple accounts, pagination, provider exception, permission revoked mid-query.
-- Export round-trip through VCF parser; counts and bytes measured, not estimated.
+## P2.3–P2.6 required tests
 
-### Media
-- Android 8–12 legacy permission behavior; Android 13 granular permissions; Android 14 selected-only and full visual-media grants; permission revoked mid-scan; cloud-backed/placeholder media; HEIC and Live Photo-like pairs.
-- Selected media is never reported as full-library coverage.
-
-### Reliability and privacy
-- Airplane mode, flaky 2G, reboot mid-upload, process death, 2% battery, battery saver, disk full, quota exhausted, clock skew, storage permission revoked.
-- No plaintext in logs, crash reports, analytics, or network requests.
-- No upload until client-side encryption and manifest verification succeed.
-
-### Restore
-- Restore to a scratch destination; validate format and content digest; compare item counts and coverage. A successful upload alone is not a successful backup.
-- Manual device matrix required before release: Pixel/AOSP, Samsung One UI, and at least one Android 13/14 device.
+- Media: Android 8–12 legacy permissions; Android 13 granular permissions; Android 14 selected-only/full visual-media grants; revoked grants; cloud placeholders; HEIC.
+- Reliability: airplane mode, flaky 2G, reboot/process death mid-operation, low battery, battery saver, disk full, quota exhaustion, and clock skew.
+- Privacy: no plaintext in logs, crash reports, analytics, or network requests; no upload before encryption and manifest verification.
+- Restore: scratch restore, format/content digest validation, item counts, and coverage comparison. Upload alone is not backup.
+- Device matrix before release: Pixel/AOSP, Samsung One UI, and Android 13/14.
 
 ## Release blockers
 

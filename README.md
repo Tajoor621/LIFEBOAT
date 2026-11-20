@@ -20,12 +20,14 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 3. **P1.5 — Integration and security validation:** cross-layer failure tests, restore integrity checks, API abuse tests, and container build verification.
 4. **P1.6 — Vault hardening:** route-level body limits, versioned credential rotation, hash-linked audit ledger, locked builds, and container smoke tests. Automated CI passed; operator acceptance remains open.
 5. **P2.0 — Android Sentinel foundation:** permission-free Android shell, explicit-consent model, permission matrix, validation plan, and Android CI.
-6. **P2.1–P2.6 — Android backup agent:** onboarding/consent, contacts snapshot, media inventory, client-side encryption, resumable upload, and restore rehearsal.
-7. P3 — Recovery decision engine and evidence-based reports.
-8. P4 — Cloud connectors and export ingestion.
-9. P5 — In-hand rescue workflows.
-10. P6 — Authenticated remote commands and guarded wipe state machine.
-11. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
+6. **P2.1 — Onboarding and consent:** saved owner-selected categories and withdrawal.
+7. **P2.2 — Contacts snapshot:** owner-initiated read-only Contacts Provider query, VCF 4.0 export, and local evidence; no upload.
+8. **P2.3–P2.6 — Android backup agent:** media inventory, client-side encryption, resumable upload, and restore rehearsal.
+9. P3 — Recovery decision engine and evidence-based reports.
+10. P4 — Cloud connectors and export ingestion.
+11. P5 — In-hand rescue workflows.
+12. P6 — Authenticated remote commands and guarded wipe state machine.
+13. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
 
 ## Current implementation
 
@@ -33,17 +35,18 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 - `core-crypto/`: XChaCha20-Poly1305 envelopes, Argon2id key derivation, dual passphrase/recovery-code vault-key wrapping, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, versioned snapshot manifests, and a scratch restore-rehearsal verifier.
 - `vault/`: local immutable ciphertext storage plus an Axum HTTP API with pre-body per-device bearer authentication, route-level body limits, versioned active/previous token digests, per-device rate/storage limits, immutable object and manifest writes, digest-verified reads, and persistent resumable chunk uploads.
 - `vault/src/audit.rs`: startup-verified, hash-linked JSONL audit ledger for successful write transitions.
-- `android-agent/`: P2.0 Kotlin Android application shell (minSdk 26, targetSdk 35), explicit per-data-class consent model, and unit tests. It intentionally has no permissions, network access, background services, or collection code.
+- `android-agent/`: Kotlin Android app (minSdk 26, targetSdk 35). P2.1 provides explicit saved consent; P2.2 adds a separately initiated read-only Contacts export to VCF 4.0. The only declared Android permission is `READ_CONTACTS`; no network permission or background collection component is present.
 - `docs/P2_ANDROID_SENTINEL_ARCHITECTURE.md`: Android architecture, safety invariants, sequencing, and evidence model.
 - `docs/P2_PERMISSION_MATRIX.md`: data-class capability and permission boundaries.
 - `docs/P2_VALIDATION_PLAN.md`: automated and device-level P2 validation requirements.
+- `docs/P2.2_CONTACTS_SNAPSHOT.md`: Contacts export scope, permission behavior, evidence, and limitations.
 - `docs/VAULT_API.md` and `docs/P1.6_HARDENING.md`: API protocol, credential rotation, audit ledger, deployment constraints, and security limitations.
 - `docs/RECOVERY_KIT.md`: offline key recovery, owner-handling rules, and restore-rehearsal evidence boundaries.
 - `docs/REALITY.md`: platform constraints and release gates.
 - `THREAT_MODEL.md`: threats, controls, and wipe safety gate.
 - `docs/RecoverabilityTruthTable.md`: normative per-data-class status rules.
 
-This remains an early-stage foundation, **not a production-ready backup service**. P1.6 automated validation passed, but operator deployment, interrupted-upload and independent-restore rehearsals, TLS/firewall configuration, and independent security review remain required. P2.0 is only a buildable Android shell and consent-policy foundation; it does not yet back up, upload, restore, or recover data. The vault accepts opaque encrypted bytes only and does not decrypt backups. Do not expose the API directly to the public Internet.
+This remains an early-stage foundation, **not a production-ready backup service**. P1.6 automated validation passed, but operator deployment, interrupted-upload and independent-restore rehearsals, TLS/firewall configuration, and independent security review remain required. P2.2 is a local contacts export, not a complete backup: it does not encrypt or upload data and does not claim every provider-specific field is covered. Real-device testing on Samsung One UI and other Android versions remains mandatory. The vault accepts opaque encrypted bytes only and does not decrypt backups. Do not expose the API directly to the public Internet.
 
 ## Local development
 

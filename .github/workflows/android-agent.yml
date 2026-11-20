@@ -7,6 +7,7 @@ on:
       - "android-agent/**"
       - "docs/P2_*.md"
       - ".github/workflows/android-agent.yml"
+      - "README.md"
   workflow_dispatch:
 
 permissions:
@@ -28,8 +29,8 @@ jobs:
           java-version: "17"
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
+        with:
+          packages: platform-tools
       - name: Install Android 35 SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Gradle
@@ -39,18 +40,19 @@ jobs:
       - name: Verify Android Sentinel
         working-directory: android-agent
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-      - name: Verify permission-free P2.1 manifest
+      - name: Verify least-privilege manifest
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           root = ET.parse("android-agent/app/src/main/AndroidManifest.xml").getroot()
-          forbidden = {"uses-permission", "uses-permission-sdk-23", "uses-feature"}
-          found = [node.tag for node in root if node.tag in forbidden]
-          assert not found, f"P2.1 must not declare permissions/features: {found}"
+          android = "{http://schemas.android.com/apk/res/android}"
+          permissions = {node.get(android + "name") for node in root if node.tag == "uses-permission"}
+          assert permissions == {"android.permission.READ_CONTACTS"}, permissions
+          forbidden = {"uses-permission-sdk-23", "uses-feature"}
+          assert not any(node.tag in forbidden for node in root), "Unexpected manifest capability"
           app = root.find("application")
           assert app is not None
           forbidden_components = {"service", "receiver", "provider"}
-          components = [node.tag for node in app if node.tag in forbidden_components]
-          assert not components, f"Unexpected components: {components}"
-          print("P2.1 manifest permission/component boundary verified")
+          assert not any(node.tag in forbidden_components for node in app), "Unexpected background component"
+          print("P2.2 manifest boundary verified: READ_CONTACTS only")
           PY
