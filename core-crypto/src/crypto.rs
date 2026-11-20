@@ -217,7 +217,6 @@ pub fn verify(
         .map_err(|_| CryptoError::Signature)
 }
 
-
 const WRAPPER_VERSION: u8 = 1;
 const MAX_WRAPPER_BYTES: usize = 4096;
 const RECOVERY_PREFIX: &str = "LB1-";
