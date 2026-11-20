@@ -42,6 +42,21 @@ impl VaultStore {
         })
     }
 
+    /// Returns the sum of regular object and manifest file sizes for quota enforcement.
+    pub fn total_bytes(&self) -> Result<u64, StoreError> {
+        let mut total = 0u64;
+        for area in ["objects", "manifests"] {
+            for entry in fs::read_dir(self.root.join(area))? {
+                let entry = entry?;
+                let metadata = entry.metadata()?;
+                if metadata.is_file() && !entry.file_name().to_string_lossy().starts_with(".tmp-") {
+                    total = total.saturating_add(metadata.len());
+                }
+            }
+        }
+        Ok(total)
+    }
+
     pub fn put_object(&self, id: &str, ciphertext: &[u8]) -> Result<[u8; 32], StoreError> {
         self.put_immutable("objects", id, 64, ciphertext)
     }
@@ -169,6 +184,15 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn total_bytes_counts_objects_and_manifests() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = VaultStore::open(dir.path(), 1024).unwrap();
+        store.put_object(&"aa".repeat(32), b"12345").unwrap();
+        store.put_manifest(&"bb".repeat(16), b"123").unwrap();
+        assert_eq!(store.total_bytes().unwrap(), 8);
+    }
 
     #[test]
     fn opaque_object_round_trip_and_integrity_check() {
