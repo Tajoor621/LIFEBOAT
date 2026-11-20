@@ -22,7 +22,7 @@ Generate a fresh nonce for each seal operation. Never reuse a nonce with the sam
 
 ## Password KDF
 
-Default Argon2id profile is 65,536 KiB memory, 3 iterations, 4 lanes, and 32-byte output. Salt must be at least 16 random bytes. Persist the exact algorithm/version/parameters/salt with the encrypted key wrapper. Benchmark on supported low-memory Android devices; future changes require versioned metadata and migration planning. Bound attacker-controlled KDF parameters before execution.
+Default Argon2id profile is 65,536 KiB memory, 3 iterations, 4 lanes, and 32-byte output. The current implementation accepts 8–128 MiB, 1–6 iterations, and 1–4 lanes to bound attacker-controlled wrapper parameters. Passphrases are capped at 4 KiB. Salt must be at least 16 random bytes. Persist the exact algorithm/version/parameters/salt with the encrypted key wrapper. Benchmark on supported low-memory Android devices; future changes require versioned metadata and migration planning. Bound attacker-controlled KDF parameters before execution.
 
 ## Object identifiers and deduplication
 
