@@ -1,14 +1,15 @@
 # P2 validation plan
 
-## P2.0 automated gates
+## P2.0–P2.1 automated gates
 
 - JDK 17 and Gradle 8.9 build the Android module.
-- Unit tests verify explicit opt-in and non-empty scope requirements.
+- Unit tests verify explicit opt-in, non-empty scope, and conservative permission-state handling.
 - Android lint runs.
 - Debug APK assembly succeeds.
-- Manifest review confirms no permissions, network access, services, receivers, device-admin, accessibility, or notification-listener components in the P2.0 shell.
+- Manifest review confirms no data permissions, network access, services, receivers, device-admin, accessibility, or notification-listener components.
+- Review consent-screen fresh-install defaults, persistence, and withdrawal behavior.
 
-## P2.1–P2.6 required tests
+## P2.2–P2.6 required tests
 
 ### Permission and consent
 - Fresh install performs zero collection and makes zero permission requests.
@@ -26,7 +27,7 @@
 
 ### Reliability and privacy
 - Airplane mode, flaky 2G, reboot mid-upload, process death, 2% battery, battery saver, disk full, quota exhausted, clock skew, storage permission revoked.
-- No plaintext in logs, crash reports, analytics, temporary paths, or network requests.
+- No plaintext in logs, crash reports, analytics, or network requests.
 - No upload until client-side encryption and manifest verification succeed.
 
 ### Restore

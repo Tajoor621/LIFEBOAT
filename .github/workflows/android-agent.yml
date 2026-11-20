@@ -26,6 +26,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android 35 SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -33,18 +37,18 @@ jobs:
       - name: Verify Android Sentinel
         working-directory: android-agent
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-      - name: Verify permission-free P2.0 manifest
+      - name: Verify permission-free P2.1 manifest
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           root = ET.parse("android-agent/app/src/main/AndroidManifest.xml").getroot()
           forbidden = {"uses-permission", "uses-permission-sdk-23", "uses-feature"}
           found = [node.tag for node in root if node.tag in forbidden]
-          assert not found, f"P2.0 must not declare permissions/features: {found}"
+          assert not found, f"P2.1 must not declare permissions/features: {found}"
           app = root.find("application")
           assert app is not None
           forbidden_components = {"service", "receiver", "provider"}
           components = [node.tag for node in app if node.tag in forbidden_components]
           assert not components, f"Unexpected components: {components}"
-          print("P2.0 manifest permission/component boundary verified")
+          print("P2.1 manifest permission/component boundary verified")
           PY
