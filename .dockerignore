@@ -5,3 +5,5 @@ lifeboat-vault
 .env
 .env.*
 *.log
+secrets
+**/credentials.json

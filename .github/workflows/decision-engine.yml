@@ -7,27 +7,35 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"
+      - "docker-compose.yml"
+      - "docs/VAULT_API.md"
       - ".dockerignore"
       - "decision-engine/**"
       - "core-crypto/**"
       - "vault/**"
+      - "config/**"
       - "docs/P1.2-P1.3_IMPLEMENTATION_AUDIT.md"
       - "docs/P1.5_VALIDATION_PLAN.md"
+      - "docs/P1.6_HARDENING.md"
+      - "docs/P1.6_HARDENING_PLAN.md"
       - ".github/workflows/decision-engine.yml"
   pull_request:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"
+      - "docker-compose.yml"
+      - "docs/VAULT_API.md"
       - ".dockerignore"
       - "decision-engine/**"
       - "core-crypto/**"
       - "vault/**"
+      - "config/**"
       - ".github/workflows/decision-engine.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: rust-workspace-${{ github.ref }}
@@ -42,11 +50,55 @@ jobs:
         with:
           toolchain: 1.99.1
           components: rustfmt, clippy
+      - name: Bootstrap lockfile if this repository has not committed one yet
+        run: |
+          if [ ! -f Cargo.lock ]; then
+            cargo generate-lockfile
+          fi
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Unit and integration tests
-        run: cargo test --workspace --all-targets
+        run: cargo test --locked --workspace --all-targets
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Release build
+        run: cargo build --locked --workspace --release
       - name: Build production container image
         run: docker build -t lifeboat-vault:ci .
+      - name: Container smoke test
+        run: |
+          set -euo pipefail
+          credentials_file="$(mktemp)"
+          cp config/credentials.example.json "$credentials_file"
+          chmod 600 "$credentials_file"
+          sudo chown 10001:10001 "$credentials_file"
+          container_id="$(docker run -d --rm \
+            -p 127.0.0.1:18080:8080 \
+            -e LIFEBOAT_BIND=0.0.0.0:8080 \
+            -v "$credentials_file:/etc/lifeboat/credentials.json:ro" \
+            lifeboat-vault:ci)"
+          cleanup() {
+            docker stop "$container_id" >/dev/null 2>&1 || true
+            rm -f "$credentials_file"
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:18080/healthz >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --show-error --fail http://127.0.0.1:18080/healthz
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            http://127.0.0.1:18080/v1/devices/00112233445566778899aabbccddeeff/objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)"
+          test "$status" = "401"
+      - name: Commit newly generated lockfile
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if [ -f Cargo.lock ] && ! git ls-files --error-unmatch Cargo.lock >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock
+            git commit -m "build: commit reproducible Cargo lockfile"
+            git push origin HEAD:main
+          fi

@@ -18,6 +18,9 @@ use axum::{
 };
 use subtle::ConstantTimeEq;
 
+mod audit;
+
+use audit::AuditLedger;
 use lifeboat_vault_store::{StoreError, VaultStore};
 
 const MAX_OBJECT_BYTES: usize = 16 * 1024 * 1024 + 16;
@@ -26,6 +29,27 @@ const MAX_STORED_BYTES: u64 = MAX_OBJECT_BYTES as u64;
 const MAX_DEVICE_STORAGE_BYTES: u64 = 50 * 1024 * 1024 * 1024;
 const RATE_WINDOW: Duration = Duration::from_secs(60);
 const MAX_REQUESTS_PER_WINDOW: u32 = 120;
+
+#[derive(Clone)]
+struct DeviceCredential {
+    active_hash: [u8; 32],
+    previous_hash: Option<[u8; 32]>,
+    previous_valid_until_unix: Option<u64>,
+}
+
+#[derive(serde::Deserialize)]
+struct CredentialFile {
+    version: u32,
+    devices: Vec<CredentialEntry>,
+}
+
+#[derive(serde::Deserialize)]
+struct CredentialEntry {
+    device_id: String,
+    active_token_blake3: String,
+    previous_token_blake3: Option<String>,
+    previous_valid_until_unix: Option<u64>,
+}
 
 #[derive(Default)]
 struct RateWindow {
@@ -36,10 +60,11 @@ struct RateWindow {
 #[derive(Clone)]
 struct AppState {
     root: PathBuf,
-    // Only keyed hashes are retained in memory; raw bearer tokens are never logged or stored.
-    device_token_hashes: Arc<HashMap<String, [u8; 32]>>,
+    // Credential digests only; raw bearer tokens are never stored.
+    device_credentials: Arc<HashMap<String, DeviceCredential>>, 
     rate_limits: Arc<tokio::sync::Mutex<HashMap<String, RateWindow>>>,
     storage_lock: Arc<tokio::sync::Mutex<()>>,
+    audit: Arc<std::sync::Mutex<AuditLedger>>,
 }
 
 #[tokio::main]
@@ -51,11 +76,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let token_config = env::var("LIFEBOAT_DEVICE_TOKENS").map_err(
-        |_| "LIFEBOAT_DEVICE_TOKENS is required; refusing to start without device credentials",
-    )?;
-    let device_token_hashes = parse_device_tokens(&token_config)?;
-    if device_token_hashes.is_empty() {
+    let args: Vec<String> = env::args().collect();
+    if args.get(1).map(String::as_str) == Some("credential-hash") {
+        let device_id = args.get(2).ok_or("usage: lifeboat-vault credential-hash <device-id>; provide token on stdin")?;
+        if !valid_hex_id(device_id, 32) { return Err("device ID must be 32 lowercase hex characters".into()); }
+        let mut token = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut token)?;
+        let token = token.trim_end_matches(['\r', '\n']);
+        if token.len() < 32 { return Err("token must contain at least 32 bytes".into()); }
+        println!("{}", encode_hex(blake3::hash(token.as_bytes()).as_bytes()));
+        return Ok(());
+    }
+    let credentials_path = env::var("LIFEBOAT_CREDENTIALS_FILE")
+        .unwrap_or_else(|_| "/etc/lifeboat/credentials.json".to_owned());
+    let device_credentials = load_credentials_file(&credentials_path)?;
+    if device_credentials.is_empty() {
         return Err("at least one device credential must be configured".into());
     }
 
@@ -63,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env::var("LIFEBOAT_VAULT_ROOT").unwrap_or_else(|_| "./lifeboat-vault".to_owned()),
     );
     std::fs::create_dir_all(root.join("devices"))?;
+    let audit = AuditLedger::open(root.join("audit"))?;
 
     let bind: SocketAddr = env::var("LIFEBOAT_BIND")
         .unwrap_or_else(|_| "127.0.0.1:8080".to_owned())
@@ -70,9 +106,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState {
         root,
-        device_token_hashes: Arc::new(device_token_hashes),
+        device_credentials: Arc::new(device_credentials),
         rate_limits: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         storage_lock: Arc::new(tokio::sync::Mutex::new(())),
+        audit: Arc::new(std::sync::Mutex::new(audit)),
     };
 
     let app = build_router(state);
@@ -90,22 +127,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
-        .route(
-            "/v1/devices/{device_id}/objects/{object_id}",
-            put(put_object).get(get_object).head(head_object),
+        .merge(
+            Router::new()
+                .route(
+                    "/v1/devices/{device_id}/objects/{object_id}",
+                    put(put_object).get(get_object).head(head_object),
+                )
+                .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES)),
         )
-        .route(
-            "/v1/devices/{device_id}/manifests/{snapshot_id}",
-            put(put_manifest).get(get_manifest),
+        .merge(
+            Router::new()
+                .route(
+                    "/v1/devices/{device_id}/manifests/{snapshot_id}",
+                    put(put_manifest).get(get_manifest),
+                )
+                .layer(DefaultBodyLimit::max(MAX_MANIFEST_BYTES)),
         )
-        .route("/v1/devices/{device_id}/uploads", post(create_upload))
+        .merge(
+            Router::new()
+                .route("/v1/devices/{device_id}/uploads", post(create_upload))
+                .layer(DefaultBodyLimit::max(4096)),
+        )
         .route(
             "/v1/devices/{device_id}/uploads/{upload_id}",
             get(get_upload_status),
         )
-        .route(
-            "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
-            put(put_upload_chunk),
+        .merge(
+            Router::new()
+                .route(
+                    "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
+                    put(put_upload_chunk),
+                )
+                .layer(DefaultBodyLimit::max(1024 * 1024)),
         )
         .route(
             "/v1/devices/{device_id}/uploads/{upload_id}/complete",
@@ -115,7 +168,6 @@ fn build_router(state: AppState) -> Router {
             state.clone(),
             authenticate_request,
         ))
-        .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
         .with_state(state)
 }
 
@@ -151,11 +203,10 @@ async fn authenticate_request(
     let Some(token) = token else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let Some(expected) = state.device_token_hashes.get(device_id) else {
+    let Some(expected) = state.device_credentials.get(device_id) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let actual = blake3::hash(token.as_bytes());
-    if expected.ct_eq(actual.as_bytes()).unwrap_u8() != 1 {
+    if !credential_matches(expected, token) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
 
@@ -182,6 +233,52 @@ async fn health() -> &'static str {
     "ok"
 }
 
+fn load_credentials_file(path: &str) -> Result<HashMap<String, DeviceCredential>, Box<dyn std::error::Error>> {
+    let metadata = std::fs::metadata(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err("credentials file permissions must be 0600 or stricter".into());
+        }
+    }
+    let raw: CredentialFile = serde_json::from_slice(&std::fs::read(path)?)?;
+    if raw.version != 1 { return Err("unsupported credentials file version".into()); }
+    let mut credentials = HashMap::new();
+    for entry in raw.devices {
+        if !valid_hex_id(&entry.device_id, 32) { return Err("invalid device ID in credentials file".into()); }
+        let active_hash = decode_hex_32(&entry.active_token_blake3).ok_or("invalid active token digest")?;
+        let previous_hash = match entry.previous_token_blake3.as_deref() {
+            Some(value) => Some(decode_hex_32(value).ok_or("invalid previous token digest")?),
+            None => None,
+        };
+        if previous_hash.is_some() != entry.previous_valid_until_unix.is_some() {
+            return Err("previous token digest and expiry must be supplied together".into());
+        }
+        let credential = DeviceCredential {
+            active_hash,
+            previous_hash,
+            previous_valid_until_unix: entry.previous_valid_until_unix,
+        };
+        if credentials.insert(entry.device_id, credential).is_some() {
+            return Err("duplicate device ID in credentials file".into());
+        }
+    }
+    Ok(credentials)
+}
+
+fn credential_matches(credential: &DeviceCredential, token: &str) -> bool {
+    let actual = blake3::hash(token.as_bytes());
+    let active = credential.active_hash.ct_eq(actual.as_bytes()).unwrap_u8() == 1;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let previous = credential.previous_hash.as_ref().is_some_and(|hash| {
+        credential.previous_valid_until_unix.is_some_and(|expiry| now <= expiry)
+            && hash.ct_eq(actual.as_bytes()).unwrap_u8() == 1
+    });
+    active || previous
+}
+
+#[cfg(test)]
 fn parse_device_tokens(input: &str) -> Result<HashMap<String, [u8; 32]>, &'static str> {
     let mut credentials = HashMap::new();
     for entry in input.split(';').filter(|entry| !entry.is_empty()) {
@@ -215,11 +312,10 @@ fn authorized_store(
         .and_then(|value| value.strip_prefix("Bearer "))
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let expected = state
-        .device_token_hashes
+        .device_credentials
         .get(device_id)
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    let actual = blake3::hash(token.as_bytes());
-    if expected.ct_eq(actual.as_bytes()).unwrap_u8() != 1 {
+    if !credential_matches(expected, token) {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -248,6 +344,7 @@ async fn put_object(
     let digest = store
         .put_object(&object_id, &body)
         .map_err(map_store_error)?;
+    record_audit(&state, &device_id, "object_put", Some(&object_id))?;
     tracing::info!(
         %device_id,
         %object_id,
@@ -318,6 +415,7 @@ async fn put_manifest(
     let digest = store
         .put_manifest(&snapshot_id, &body)
         .map_err(map_store_error)?;
+    record_audit(&state, &device_id, "manifest_put", Some(&snapshot_id))?;
     tracing::info!(
         %device_id,
         %snapshot_id,
@@ -385,6 +483,7 @@ async fn create_upload(
             expected,
         )
         .map_err(map_store_error)?;
+    record_audit(&state, &device_id, "upload_session_create", Some(&info.upload_id))?;
     tracing::info!(
         %device_id,
         upload_id = %info.upload_id,
@@ -425,6 +524,7 @@ async fn put_upload_chunk(
     let info = store
         .put_upload_chunk(&upload_id, chunk_index, &body, digest)
         .map_err(map_store_error)?;
+    record_audit(&state, &device_id, "upload_chunk_put", Some(&upload_id))?;
     tracing::info!(
         %device_id,
         %upload_id,
@@ -443,8 +543,20 @@ async fn complete_upload(
     let _storage_guard = state.storage_lock.lock().await;
     let store = authorized_store(&state, &device_id, &headers)?;
     let digest = store.complete_upload(&upload_id).map_err(map_store_error)?;
+    record_audit(&state, &device_id, "upload_complete", Some(&upload_id))?;
     tracing::info!(%device_id, %upload_id, action = "upload_complete");
     Ok(digest_response(StatusCode::CREATED, digest))
+}
+
+fn record_audit(
+    state: &AppState,
+    device_id: &str,
+    action: &str,
+    resource_id: Option<&str>,
+) -> Result<(), StatusCode> {
+    state.audit.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .append(device_id, action, resource_id, "success")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 fn required_digest(headers: &HeaderMap) -> Result<[u8; 32], StatusCode> {
@@ -541,18 +653,21 @@ mod tests {
 
     fn test_state() -> AppState {
         let token = "a".repeat(40);
+        let root = std::env::temp_dir().join(format!(
+            "lifeboat-api-test-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let audit = AuditLedger::open(root.join("audit")).unwrap();
         AppState {
-            root: std::env::temp_dir().join(format!(
-                "lifeboat-api-test-{}-{}",
-                std::process::id(),
-                NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
-            )),
-            device_token_hashes: Arc::new(HashMap::from([(
+            root,
+            device_credentials: Arc::new(HashMap::from([(
                 "00112233445566778899aabbccddeeff".to_owned(),
-                *blake3::hash(token.as_bytes()).as_bytes(),
-            )])),
+                DeviceCredential { active_hash: *blake3::hash(token.as_bytes()).as_bytes(), previous_hash: None, previous_valid_until_unix: None },
+            )])), 
             rate_limits: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             storage_lock: Arc::new(tokio::sync::Mutex::new(())),
+            audit: Arc::new(std::sync::Mutex::new(audit)),
         }
     }
 
@@ -799,6 +914,68 @@ mod tests {
             .unwrap();
         assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn previous_token_is_accepted_only_during_rotation_window() {
+        let active = "a".repeat(40);
+        let previous = "b".repeat(40);
+        let expiry = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 60;
+        let credential = DeviceCredential {
+            active_hash: *blake3::hash(active.as_bytes()).as_bytes(),
+            previous_hash: Some(*blake3::hash(previous.as_bytes()).as_bytes()),
+            previous_valid_until_unix: Some(expiry),
+        };
+        assert!(credential_matches(&credential, &active));
+        assert!(credential_matches(&credential, &previous));
+        let expired = DeviceCredential {
+            previous_valid_until_unix: Some(1),
+            ..credential
+        };
+        assert!(!credential_matches(&expired, &previous));
+    }
+
+    #[test]
+    fn versioned_credentials_file_loads_active_and_previous_hashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("credentials.json");
+        let active = "a".repeat(40);
+        let previous = "b".repeat(40);
+        let active_hash = encode_hex(blake3::hash(active.as_bytes()).as_bytes());
+        let previous_hash = encode_hex(blake3::hash(previous.as_bytes()).as_bytes());
+        let expiry = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 60;
+        let json = format!(
+            r#"{{"version":1,"devices":[{{"device_id":"00112233445566778899aabbccddeeff","active_token_blake3":"{active_hash}","previous_token_blake3":"{previous_hash}","previous_valid_until_unix":{expiry}}}]}}"#
+        );
+        std::fs::write(&path, json).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let loaded = load_credentials_file(path.to_str().unwrap()).unwrap();
+        let credential = loaded.get("00112233445566778899aabbccddeeff").unwrap();
+        assert!(credential_matches(credential, &active));
+        assert!(credential_matches(credential, &previous));
+    }
+
+    #[tokio::test]
+    async fn manifest_body_limit_is_enforced_by_route_extractor() {
+        let state = test_state();
+        let app = build_router(state);
+        let device_id = "00112233445566778899aabbccddeeff";
+        let token = "a".repeat(40);
+        let response = app.oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/v1/devices/{device_id}/manifests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::from(vec![0u8; MAX_MANIFEST_BYTES + 1]))
+                .unwrap(),
+        ).await.unwrap();
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[test]

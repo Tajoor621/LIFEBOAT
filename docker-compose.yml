@@ -7,12 +7,13 @@ services:
     environment:
       LIFEBOAT_BIND: "0.0.0.0:8080"
       LIFEBOAT_VAULT_ROOT: "/var/lib/lifeboat/vault"
-      LIFEBOAT_DEVICE_TOKENS: ${LIFEBOAT_DEVICE_TOKENS:?Set device credentials in the host environment}
+      LIFEBOAT_CREDENTIALS_FILE: "/etc/lifeboat/credentials.json"
     ports:
       # Host loopback only. Put a TLS reverse proxy in front for remote access.
       - "127.0.0.1:8080:8080"
     volumes:
       - lifeboat-vault-data:/var/lib/lifeboat/vault
+      - ./secrets/credentials.json:/etc/lifeboat/credentials.json:ro
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev

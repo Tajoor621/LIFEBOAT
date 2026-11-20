@@ -1,0 +1,6 @@
+/secrets/
+/target/
+/lifeboat-vault/
+.env
+.env.*
+*.log
