@@ -5,7 +5,7 @@ use chacha20poly1305::{
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::ObjectId;
 
@@ -233,6 +233,12 @@ pub struct KeyWrapper {
 pub struct RecoveryKit {
     recovery_code: String,
     vault_id: [u8; 16],
+}
+
+impl Drop for RecoveryKit {
+    fn drop(&mut self) {
+        self.recovery_code.zeroize();
+    }
 }
 
 impl RecoveryKit {
