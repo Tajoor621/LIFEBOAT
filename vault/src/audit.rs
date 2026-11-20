@@ -51,11 +51,19 @@ impl AuditLedger {
         fs::create_dir_all(root.as_ref())?;
         let path = root.as_ref().join("events.jsonl");
         if !path.exists() {
-            OpenOptions::new().write(true).create_new(true).open(&path)?.sync_all()?;
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)?
+                .sync_all()?;
             File::open(root.as_ref())?.sync_all()?;
         }
         let (sequence, previous_hash) = verify_file(&path)?;
-        Ok(Self { path, sequence, previous_hash })
+        Ok(Self {
+            path,
+            sequence,
+            previous_hash,
+        })
     }
 
     pub fn append(
@@ -150,8 +158,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         {
             let mut ledger = AuditLedger::open(dir.path()).unwrap();
-            ledger.append("device", "object_put", Some("object"), "success").unwrap();
-            ledger.append("device", "manifest_put", Some("snapshot"), "success").unwrap();
+            ledger
+                .append("device", "object_put", Some("object"), "success")
+                .unwrap();
+            ledger
+                .append("device", "manifest_put", Some("snapshot"), "success")
+                .unwrap();
         }
         let reopened = AuditLedger::open(dir.path()).unwrap();
         assert_eq!(reopened.sequence, 2);
@@ -163,11 +175,16 @@ mod tests {
         let path;
         {
             let mut ledger = AuditLedger::open(dir.path()).unwrap();
-            ledger.append("device", "object_put", None, "success").unwrap();
+            ledger
+                .append("device", "object_put", None, "success")
+                .unwrap();
             path = ledger.path().to_path_buf();
         }
         let original = fs::read_to_string(&path).unwrap();
         fs::write(&path, original.replace("object_put", "object_get")).unwrap();
-        assert!(matches!(AuditLedger::open(dir.path()), Err(AuditError::Integrity)));
+        assert!(matches!(
+            AuditLedger::open(dir.path()),
+            Err(AuditError::Integrity)
+        ));
     }
 }

@@ -61,7 +61,7 @@ struct RateWindow {
 struct AppState {
     root: PathBuf,
     // Credential digests only; raw bearer tokens are never stored.
-    device_credentials: Arc<HashMap<String, DeviceCredential>>, 
+    device_credentials: Arc<HashMap<String, DeviceCredential>>,
     rate_limits: Arc<tokio::sync::Mutex<HashMap<String, RateWindow>>>,
     storage_lock: Arc<tokio::sync::Mutex<()>>,
     audit: Arc<std::sync::Mutex<AuditLedger>>,
@@ -78,12 +78,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = env::args().collect();
     if args.get(1).map(String::as_str) == Some("credential-hash") {
-        let device_id = args.get(2).ok_or("usage: lifeboat-vault credential-hash <device-id>; provide token on stdin")?;
-        if !valid_hex_id(device_id, 32) { return Err("device ID must be 32 lowercase hex characters".into()); }
+        let device_id = args
+            .get(2)
+            .ok_or("usage: lifeboat-vault credential-hash <device-id>; provide token on stdin")?;
+        if !valid_hex_id(device_id, 32) {
+            return Err("device ID must be 32 lowercase hex characters".into());
+        }
         let mut token = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut token)?;
         let token = token.trim_end_matches(['\r', '\n']);
-        if token.len() < 32 { return Err("token must contain at least 32 bytes".into()); }
+        if token.len() < 32 {
+            return Err("token must contain at least 32 bytes".into());
+        }
         println!("{}", encode_hex(blake3::hash(token.as_bytes()).as_bytes()));
         return Ok(());
     }
@@ -233,7 +239,9 @@ async fn health() -> &'static str {
     "ok"
 }
 
-fn load_credentials_file(path: &str) -> Result<HashMap<String, DeviceCredential>, Box<dyn std::error::Error>> {
+fn load_credentials_file(
+    path: &str,
+) -> Result<HashMap<String, DeviceCredential>, Box<dyn std::error::Error>> {
     let metadata = std::fs::metadata(path)?;
     #[cfg(unix)]
     {
@@ -243,11 +251,16 @@ fn load_credentials_file(path: &str) -> Result<HashMap<String, DeviceCredential>
         }
     }
     let raw: CredentialFile = serde_json::from_slice(&std::fs::read(path)?)?;
-    if raw.version != 1 { return Err("unsupported credentials file version".into()); }
+    if raw.version != 1 {
+        return Err("unsupported credentials file version".into());
+    }
     let mut credentials = HashMap::new();
     for entry in raw.devices {
-        if !valid_hex_id(&entry.device_id, 32) { return Err("invalid device ID in credentials file".into()); }
-        let active_hash = decode_hex_32(&entry.active_token_blake3).ok_or("invalid active token digest")?;
+        if !valid_hex_id(&entry.device_id, 32) {
+            return Err("invalid device ID in credentials file".into());
+        }
+        let active_hash =
+            decode_hex_32(&entry.active_token_blake3).ok_or("invalid active token digest")?;
         let previous_hash = match entry.previous_token_blake3.as_deref() {
             Some(value) => Some(decode_hex_32(value).ok_or("invalid previous token digest")?),
             None => None,
@@ -270,9 +283,14 @@ fn load_credentials_file(path: &str) -> Result<HashMap<String, DeviceCredential>
 fn credential_matches(credential: &DeviceCredential, token: &str) -> bool {
     let actual = blake3::hash(token.as_bytes());
     let active = credential.active_hash.ct_eq(actual.as_bytes()).unwrap_u8() == 1;
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let previous = credential.previous_hash.as_ref().is_some_and(|hash| {
-        credential.previous_valid_until_unix.is_some_and(|expiry| now <= expiry)
+        credential
+            .previous_valid_until_unix
+            .is_some_and(|expiry| now <= expiry)
             && hash.ct_eq(actual.as_bytes()).unwrap_u8() == 1
     });
     active || previous
@@ -483,7 +501,12 @@ async fn create_upload(
             expected,
         )
         .map_err(map_store_error)?;
-    record_audit(&state, &device_id, "upload_session_create", Some(&info.upload_id))?;
+    record_audit(
+        &state,
+        &device_id,
+        "upload_session_create",
+        Some(&info.upload_id),
+    )?;
     tracing::info!(
         %device_id,
         upload_id = %info.upload_id,
@@ -554,7 +577,10 @@ fn record_audit(
     action: &str,
     resource_id: Option<&str>,
 ) -> Result<(), StatusCode> {
-    state.audit.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    state
+        .audit
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .append(device_id, action, resource_id, "success")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
@@ -663,8 +689,12 @@ mod tests {
             root,
             device_credentials: Arc::new(HashMap::from([(
                 "00112233445566778899aabbccddeeff".to_owned(),
-                DeviceCredential { active_hash: *blake3::hash(token.as_bytes()).as_bytes(), previous_hash: None, previous_valid_until_unix: None },
-            )])), 
+                DeviceCredential {
+                    active_hash: *blake3::hash(token.as_bytes()).as_bytes(),
+                    previous_hash: None,
+                    previous_valid_until_unix: None,
+                },
+            )])),
             rate_limits: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             storage_lock: Arc::new(tokio::sync::Mutex::new(())),
             audit: Arc::new(std::sync::Mutex::new(audit)),
@@ -921,7 +951,10 @@ mod tests {
         let active = "a".repeat(40);
         let previous = "b".repeat(40);
         let expiry = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 60;
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 60;
         let credential = DeviceCredential {
             active_hash: *blake3::hash(active.as_bytes()).as_bytes(),
             previous_hash: Some(*blake3::hash(previous.as_bytes()).as_bytes()),
@@ -945,7 +978,10 @@ mod tests {
         let active_hash = encode_hex(blake3::hash(active.as_bytes()).as_bytes());
         let previous_hash = encode_hex(blake3::hash(previous.as_bytes()).as_bytes());
         let expiry = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 60;
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 60;
         let json = format!(
             r#"{{"version":1,"devices":[{{"device_id":"00112233445566778899aabbccddeeff","active_token_blake3":"{active_hash}","previous_token_blake3":"{previous_hash}","previous_valid_until_unix":{expiry}}}]}}"#
         );
@@ -967,14 +1003,19 @@ mod tests {
         let app = build_router(state);
         let device_id = "00112233445566778899aabbccddeeff";
         let token = "a".repeat(40);
-        let response = app.oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri(format!("/v1/devices/{device_id}/manifests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .body(Body::from(vec![0u8; MAX_MANIFEST_BYTES + 1]))
-                .unwrap(),
-        ).await.unwrap();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!(
+                        "/v1/devices/{device_id}/manifests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::from(vec![0u8; MAX_MANIFEST_BYTES + 1]))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
