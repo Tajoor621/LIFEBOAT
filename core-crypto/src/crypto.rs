@@ -115,7 +115,11 @@ pub fn derive_backup_key(
     salt: &[u8],
     config: Argon2idConfig,
 ) -> Result<SymmetricKey, CryptoError> {
-    if salt.len() < 16 || salt.len() > 64 || passphrase.is_empty() || passphrase.len() > 4096 {
+    if salt.len() < 16
+        || salt.len() > 64
+        || passphrase.is_empty()
+        || passphrase.len() > 4096
+    {
         return Err(CryptoError::Kdf);
     }
     let params = config.validate()?;
