@@ -19,6 +19,7 @@ pub use restore::{run_restore_rehearsal, RestoreError, RestoreRehearsalReport};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn encrypt_decrypt_round_trip_and_aad_binding() {
@@ -199,7 +200,7 @@ mod tests {
 
     #[test]
     fn restore_rehearsal_restores_all_contacts_and_validates_sampled_items() {
-        use std::{collections::HashMap, fs};
+        use std::collections::HashMap;
 
         let master = generate_symmetric_key().unwrap();
         let dedup = derive_object_id_key(&master);
