@@ -309,7 +309,6 @@ mod tests {
         assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
     }
 
-
     #[test]
     fn restore_rehearsal_rejects_parser_failure_and_removes_scratch_file() {
         let master = generate_symmetric_key().unwrap();
