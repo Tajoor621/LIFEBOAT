@@ -16,38 +16,49 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 ## Roadmap
 
 1. **P0 — Reality and architecture:** platform constraints, truth table, threat model, and ADRs.
-2. **P1 — Core crypto, manifests, and vault:** client-side encryption primitives, versioned manifest encoding, immutable ciphertext storage, and the first authenticated HTTP transport layer.
-3. **P1.5 — Integration and security validation:** cross-layer failure tests, restore integrity checks, API abuse tests, and container build verification. Automated CI passed on `863474b`; manual validation and independent review remain required.
-4. **P1.6 — Vault hardening:** route-level body limits, versioned credential rotation, hash-linked audit ledger, locked builds and container smoke tests (implementation and automated CI accepted; operator acceptance pending).
-5. P2 — Android backup agent and restore.
-6. P3 — Recovery decision engine and evidence-based reports.
-7. P4 — Cloud connectors and export ingestion.
-8. P5 — In-hand rescue workflows.
-9. P6 — Authenticated remote commands and guarded wipe state machine.
-10. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
+2. **P1 — Core crypto, manifests, and vault:** client-side encryption primitives, versioned manifest encoding, immutable ciphertext storage, and authenticated HTTP transport.
+3. **P1.5 — Integration and security validation:** cross-layer failure tests, restore integrity checks, API abuse tests, and container build verification.
+4. **P1.6 — Vault hardening:** route-level body limits, versioned credential rotation, hash-linked audit ledger, locked builds, and container smoke tests. Automated CI passed; operator acceptance remains open.
+5. **P2.0 — Android Sentinel foundation:** permission-free Android shell, explicit-consent model, permission matrix, validation plan, and Android CI.
+6. **P2.1–P2.6 — Android backup agent:** onboarding/consent, contacts snapshot, media inventory, client-side encryption, resumable upload, and restore rehearsal.
+7. P3 — Recovery decision engine and evidence-based reports.
+8. P4 — Cloud connectors and export ingestion.
+9. P5 — In-hand rescue workflows.
+10. P6 — Authenticated remote commands and guarded wipe state machine.
+11. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
 
 ## Current implementation
 
 - `decision-engine/`: four-state evidence-based recoverability evaluator.
-- `core-crypto/`: XChaCha20-Poly1305 envelopes, Argon2id key derivation, dual passphrase/recovery-code vault-key wrapping, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, versioned snapshot manifests, and a scratch restore-rehearsal verifier that checks every contact item plus a deterministic sample using caller-supplied format parsers.
+- `core-crypto/`: XChaCha20-Poly1305 envelopes, Argon2id key derivation, dual passphrase/recovery-code vault-key wrapping, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, versioned snapshot manifests, and a scratch restore-rehearsal verifier.
 - `vault/`: local immutable ciphertext storage plus an Axum HTTP API with pre-body per-device bearer authentication, route-level body limits, versioned active/previous token digests, per-device rate/storage limits, immutable object and manifest writes, digest-verified reads, and persistent resumable chunk uploads.
 - `vault/src/audit.rs`: startup-verified, hash-linked JSONL audit ledger for successful write transitions.
-- `docs/VAULT_API.md` and `docs/P1.6_HARDENING.md`: API protocol, versioned credential rotation, audit ledger, deployment constraints, and explicit security limitations.
+- `android-agent/`: P2.0 Kotlin Android application shell (minSdk 26, targetSdk 35), explicit per-data-class consent model, and unit tests. It intentionally has no permissions, network access, background services, or collection code.
+- `docs/P2_ANDROID_SENTINEL_ARCHITECTURE.md`: Android architecture, safety invariants, sequencing, and evidence model.
+- `docs/P2_PERMISSION_MATRIX.md`: data-class capability and permission boundaries.
+- `docs/P2_VALIDATION_PLAN.md`: automated and device-level P2 validation requirements.
+- `docs/VAULT_API.md` and `docs/P1.6_HARDENING.md`: API protocol, credential rotation, audit ledger, deployment constraints, and security limitations.
 - `docs/RECOVERY_KIT.md`: offline key recovery, owner-handling rules, and restore-rehearsal evidence boundaries.
-- `docs/P1.5_VALIDATION_PLAN.md`: CI gates, failure matrix, manual release checks, and P1.5 exit criteria.
 - `docs/REALITY.md`: platform constraints and release gates.
 - `THREAT_MODEL.md`: threats, controls, and wipe safety gate.
 - `docs/RecoverabilityTruthTable.md`: normative per-data-class status rules.
 
-This is an early P1 foundation, **not a production-ready backup service**. P1.2/P1.3 provide an authenticated API, per-device request/storage limits, immutable storage, and resumable chunk sessions. P1.4 provides client-side dual key wrapping, an offline recovery code, and an item-level restore-rehearsal primitive. P1.5 adds integration coverage and container build checks. P1.6 now implements route-level body limits, versioned credential digests with bounded previous-token overlap, startup-verified hash-linked audit records, loopback-by-default binding, locked Rust/Docker builds, and a container smoke test in CI. All automated P1.6 gates passed in [run 44733561934](https://github.com/Tajoor621/LIFEBOAT/actions/runs/44733561934), and the generated `Cargo.lock` was committed to `main` as `ef34e36`. Operator deployment, interrupted-upload and independent-restore rehearsals remain required before production use. Remaining limitations include no online credential hot reload, no multi-node coordination, no built-in TLS, no external audit checkpoint anchoring, no committed-object retention controls, no S3 adapter, and no independent security review. The Recovery Kit is currently a printable text format, not yet a BIP-39 mnemonic, QR/PDF UI, or proven cross-device restore workflow. Do not expose the API directly to the public Internet. The API accepts opaque encrypted bytes only; it does not decrypt backups.
+This remains an early-stage foundation, **not a production-ready backup service**. P1.6 automated validation passed, but operator deployment, interrupted-upload and independent-restore rehearsals, TLS/firewall configuration, and independent security review remain required. P2.0 is only a buildable Android shell and consent-policy foundation; it does not yet back up, upload, restore, or recover data. The vault accepts opaque encrypted bytes only and does not decrypt backups. Do not expose the API directly to the public Internet.
 
 ## Local development
 
+Rust workspace:
 ```sh
 cargo fmt --all -- --check
 cargo test --locked --workspace --all-targets
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo build --locked --workspace --release
+```
+
+Android Sentinel:
+```sh
+cd android-agent
+gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
 ## Self-hosted container
@@ -58,9 +69,9 @@ See `docs/VAULT_API.md` and `docs/P1.6_HARDENING.md`. Create `secrets/credential
 
 - Android agent: Kotlin, minSdk 26+
 - Shared core and vault: Rust
-- Desktop console: Tauri + React
-- Local metadata and queues: SQLite
-- Encrypted blob storage: local filesystem or S3-compatible storage (S3 adapter not implemented)
+- Desktop console: Tauri + React (planned)
+- Local metadata and queues: SQLite (planned)
+- Encrypted blob storage: local filesystem; S3-compatible adapter not implemented
 - Self-hosting: Docker Compose; Raspberry Pi and VPS are targets subject to measured resource limits
 
 ## Safety and licensing
