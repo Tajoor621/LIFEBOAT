@@ -68,7 +68,7 @@ curl --fail-with-body \
 
 ## Resumable upload protocol
 
-Create a session with JSON containing `object_id` (64 lowercase hex characters), `total_size`, `chunk_size` (64 KiB–1 MiB), and `expected_blake3` (the expected digest of the complete ciphertext object). The server allocates a persistent sparse part file and returns an opaque 128-bit `upload_id`. A device can query the session after reconnect and resume only chunks not yet acknowledged.
+Create a session with JSON containing `object_id` (64 lowercase hex characters), `total_size`, `chunk_size` (64 KiB–1 MiB), and `expected_blake3` (the expected digest of the complete ciphertext object). The server allocates a persistent sparse part file and returns an opaque 128-bit `upload_id`. The status response includes `received_bytes`, `chunk_count`, and the exact `completed_chunks` index list, so a client can resume only chunks not yet acknowledged.
 
 Upload chunks with zero-based chunk indexes and `x-lifeboat-chunk-blake3`. Every chunk must have the exact expected length and digest. Repeating a successfully acknowledged chunk with the same digest is idempotent; conflicting retries are rejected. The server syncs chunk bytes before persisting the chunk receipt. Completion requires every chunk receipt and a full-object BLAKE3 match before immutable object commit. A small completion receipt makes completion retry-safe if the response is lost. Incomplete sessions expire after seven days and at most 32 active sessions are allowed per device.
 
