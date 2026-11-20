@@ -537,14 +537,18 @@ fn encode_hex(bytes: &[u8; 32]) -> String {
 mod tests {
     use super::*;
     use axum::{body::Body, http::Request};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use tower::ServiceExt;
+
+    static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(0);
 
     fn test_state() -> AppState {
         let token = "a".repeat(40);
         AppState {
             root: std::env::temp_dir().join(format!(
-                "lifeboat-api-test-{}",
-                std::process::id()
+                "lifeboat-api-test-{}-{}",
+                std::process::id(),
+                NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
             )),
             device_token_hashes: Arc::new(HashMap::from([(
                 "00112233445566778899aabbccddeeff".to_owned(),
@@ -724,6 +728,23 @@ mod tests {
             digest.as_str()
         );
 
+        let duplicate_object = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!(
+                        "/v1/devices/{device_id}/objects/{}",
+                        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::from(payload.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(duplicate_object.status(), StatusCode::CONFLICT);
+
         let cross_device = app
             .oneshot(
                 Request::builder()
@@ -739,6 +760,50 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cross_device.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    
+    #[tokio::test]
+    async fn per_device_rate_limit_rejects_request_121_in_window() {
+        let state = test_state();
+        let root = state.root.clone();
+        let app = build_router(state);
+        let device_id = "00112233445566778899aabbccddeeff";
+        let token = "a".repeat(40);
+        let object_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let digest = "00".repeat(32);
+
+        for _ in 0..MAX_REQUESTS_PER_WINDOW {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(format!("/v1/devices/{device_id}/objects/{object_id}"))
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .header("x-lifeboat-content-blake3", &digest)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        }
+
+        let limited = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/devices/{device_id}/objects/{object_id}"))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header("x-lifeboat-content-blake3", digest)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
