@@ -115,7 +115,7 @@ pub fn derive_backup_key(
     salt: &[u8],
     config: Argon2idConfig,
 ) -> Result<SymmetricKey, CryptoError> {
-    if salt.len() < 16 || salt.len() > 64 || passphrase.is_empty() {
+    if salt.len() < 16 || salt.len() > 64 || passphrase.is_empty() || passphrase.len() > 4096 {
         return Err(CryptoError::Kdf);
     }
     let params = config.validate()?;
@@ -322,7 +322,8 @@ fn parse_recovery_code(code: &str) -> Result<zeroize::Zeroizing<[u8; KEY_LEN]>, 
     }
     let secret = zeroize::Zeroizing::new(decode_hex::<KEY_LEN>(secret_hex)?);
     let checksum = decode_hex::<4>(checksum_hex)?;
-    if blake3::hash(&*secret).as_bytes()[..4] != checksum {
+    let actual_checksum = &blake3::hash(&*secret).as_bytes()[..4];
+    if actual_checksum != checksum.as_slice() {
         return Err(CryptoError::RecoveryCode);
     }
     Ok(secret)
