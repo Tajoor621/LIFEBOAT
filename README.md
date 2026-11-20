@@ -28,13 +28,13 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 
 - `decision-engine/`: four-state evidence-based recoverability evaluator.
 - `core-crypto/`: XChaCha20-Poly1305 envelope, Argon2id key derivation, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, and versioned snapshot manifest encoding.
-- `vault/`: local immutable ciphertext storage plus an Axum HTTP API with per-device bearer authentication, device-scoped storage, bounded bodies, immutable PUT, and digest-verified GET.
+- `vault/`: local immutable ciphertext storage plus an Axum HTTP API with pre-body per-device bearer authentication, per-device rate/storage limits, immutable object and manifest writes, digest-verified reads, verified HEAD probes, and persistent resumable chunk uploads.
 - `docs/VAULT_API.md`: API protocol, credential configuration, deployment constraints, and explicit security limitations.
 - `docs/REALITY.md`: platform constraints and release gates.
 - `THREAT_MODEL.md`: threats, controls, and wipe safety gate.
 - `docs/RecoverabilityTruthTable.md`: normative per-data-class status rules.
 
-This is an early P1 foundation, **not a production-ready backup service**. P1.2 adds a first authenticated API boundary but does not yet provide TLS termination, device enrollment, token revocation, quotas, rate limiting, resumable transfer sessions, append-only audit storage, retention controls, S3 storage, or independent security review. Do not expose the API directly to the public Internet. The API accepts opaque encrypted bytes only; it does not decrypt backups.
+This is an early P1 foundation, **not a production-ready backup service**. P1.2/P1.3 add an authenticated API, per-device request/storage limits, immutable storage, and resumable chunk sessions. TLS termination, device enrollment, online token revocation, durable distributed rate limiting, tamper-evident audit storage, committed-object retention controls, S3 storage, and independent security review remain outstanding. Do not expose the API directly to the public Internet. The API accepts opaque encrypted bytes only; it does not decrypt backups.
 
 ## Local development
 
