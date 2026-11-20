@@ -123,7 +123,11 @@ impl VaultStore {
         let mut part = OpenOptions::new().write(true).create_new(true).open(&part_path)?;
         part.set_len(total_size)?;
         part.sync_all()?;
-        self.save_upload_session(&upload_id, &session)?;
+        File::open(self.root.join("uploads"))?.sync_all()?;
+        if let Err(error) = self.save_upload_session(&upload_id, &session) {
+            let _ = fs::remove_file(part_path);
+            return Err(error);
+        }
         Ok(upload_info(&upload_id, &session))
     }
 
@@ -305,6 +309,16 @@ impl VaultStore {
         {
             return Err(StoreError::Integrity);
         }
+        const RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if now.saturating_sub(session.created_at_unix) > RETENTION_SECONDS {
+            let _ = fs::remove_file(self.upload_part_path(upload_id));
+            let _ = fs::remove_file(self.upload_session_path(upload_id));
+            return Err(StoreError::SessionNotFound);
+        }
         Ok(session)
     }
 
@@ -435,7 +449,10 @@ impl VaultStore {
         let link_result = fs::hard_link(&temporary, &destination);
         let _ = fs::remove_file(&temporary);
         match link_result {
-            Ok(()) => Ok(*blake3::hash(bytes).as_bytes()),
+            Ok(()) => {
+                File::open(&dir)?.sync_all()?;
+                Ok(*blake3::hash(bytes).as_bytes())
+            },
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 Err(StoreError::AlreadyExists)
             }
@@ -559,6 +576,31 @@ mod tests {
         assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
         assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
         assert_eq!(reopened.get_object(&object_id, digest).unwrap(), payload);
+    }
+
+    #[test]
+    fn expired_upload_sessions_are_rejected_and_cleaned() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = VaultStore::open(dir.path(), 2 * 1024 * 1024).unwrap();
+        let payload = vec![2u8; 65_536];
+        let session = store
+            .create_upload_session(
+                &"de".repeat(32),
+                payload.len() as u64,
+                65_536,
+                *blake3::hash(&payload).as_bytes(),
+            )
+            .unwrap();
+        let metadata_path = store.upload_session_path(&session.upload_id);
+        let mut persisted: UploadSession =
+            serde_json::from_slice(&fs::read(&metadata_path).unwrap()).unwrap();
+        persisted.created_at_unix = 0;
+        fs::write(&metadata_path, serde_json::to_vec(&persisted).unwrap()).unwrap();
+        assert!(matches!(
+            store.upload_session_info(&session.upload_id),
+            Err(StoreError::SessionNotFound)
+        ));
+        assert!(!store.upload_part_path(&session.upload_id).exists());
     }
 
     #[test]
