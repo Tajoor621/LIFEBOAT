@@ -538,7 +538,10 @@ mod tests {
     fn test_state() -> AppState {
         let token = "a".repeat(40);
         AppState {
-            root: std::env::temp_dir().join(format!("lifeboat-api-test-{}", std::process::id())),
+            root: std::env::temp_dir().join(format!(
+                "lifeboat-api-test-{}",
+                std::process::id()
+            )),
             device_token_hashes: Arc::new(HashMap::from([(
                 "00112233445566778899aabbccddeeff".to_owned(),
                 *blake3::hash(token.as_bytes()).as_bytes(),
@@ -575,7 +578,12 @@ mod tests {
 
         let health_response = app
             .clone()
-            .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(health_response.status(), StatusCode::OK);
@@ -596,7 +604,6 @@ mod tests {
         assert_eq!(protected_response.status(), StatusCode::UNAUTHORIZED);
     }
 
-
     #[tokio::test]
     async fn authenticated_resumable_upload_round_trip_and_device_isolation() {
         let app = build_router(test_state());
@@ -609,69 +616,99 @@ mod tests {
             "total_size": payload.len(),
             "chunk_size": 65_536,
             "expected_blake3": digest
-        }).to_string();
+        })
+        .to_string();
 
-        let unauthenticated_large_body = app.clone().oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri(format!(
-                    "/v1/devices/{device_id}/objects/{}",
-                    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-                ))
-                .body(Body::from(vec![0u8; MAX_OBJECT_BYTES + 1]))
-                .unwrap()
-        ).await.unwrap();
+        let unauthenticated_large_body = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!(
+                        "/v1/devices/{device_id}/objects/{}",
+                        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    ))
+                    .body(Body::from(vec![0u8; MAX_OBJECT_BYTES + 1]))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(
             unauthenticated_large_body.status(),
             StatusCode::UNAUTHORIZED
         );
 
-        let created = app.clone().oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/v1/devices/{device_id}/uploads"))
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(create_body))
-                .unwrap()
-        ).await.unwrap();
+        let created = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/devices/{device_id}/uploads"))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(create_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(created.status(), StatusCode::CREATED);
-        let body = axum::body::to_bytes(created.into_body(), 4096).await.unwrap();
-        let info: lifeboat_vault_store::UploadSessionInfo = serde_json::from_slice(&body).unwrap();
+        let body = axum::body::to_bytes(created.into_body(), 4096)
+            .await
+            .unwrap();
+        let info: lifeboat_vault_store::UploadSessionInfo =
+            serde_json::from_slice(&body).unwrap();
 
         let chunk_digest = encode_hex(blake3::hash(&payload).as_bytes());
-        let uploaded = app.clone().oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri(format!("/v1/devices/{device_id}/uploads/{}/chunks/0", info.upload_id))
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .header("x-lifeboat-chunk-blake3", chunk_digest)
-                .body(Body::from(payload.clone()))
-                .unwrap()
-        ).await.unwrap();
+        let uploaded = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!(
+                        "/v1/devices/{device_id}/uploads/{}/chunks/0",
+                        info.upload_id
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header("x-lifeboat-chunk-blake3", chunk_digest)
+                    .body(Body::from(payload.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(uploaded.status(), StatusCode::OK);
 
-        let completed = app.clone().oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/v1/devices/{device_id}/uploads/{}/complete", info.upload_id))
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .body(Body::empty())
-                .unwrap()
-        ).await.unwrap();
+        let completed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/devices/{device_id}/uploads/{}/complete",
+                        info.upload_id
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(completed.status(), StatusCode::CREATED);
 
-        let head_response = app.clone().oneshot(
-            Request::builder()
-                .method("HEAD")
-                .uri(format!(
-                    "/v1/devices/{device_id}/objects/{}",
-                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                ))
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .body(Body::empty())
-                .unwrap()
-        ).await.unwrap();
+        let head_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("HEAD")
+                    .uri(format!(
+                        "/v1/devices/{device_id}/objects/{}",
+                        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(head_response.status(), StatusCode::OK);
         assert_eq!(
             head_response
@@ -680,20 +717,23 @@ mod tests {
                 .unwrap()
                 .to_str()
                 .unwrap(),
-            digest
+            digest.as_str()
         );
 
-        let cross_device = app.oneshot(
-            Request::builder()
-                .method("GET")
-                .uri(format!(
-                    "/v1/devices/ffeeddccbbaa99887766554433221100/uploads/{}",
-                    info.upload_id
-                ))
-                .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .body(Body::empty())
-                .unwrap()
-        ).await.unwrap();
+        let cross_device = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/devices/ffeeddccbbaa99887766554433221100/uploads/{}",
+                        info.upload_id
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(cross_device.status(), StatusCode::UNAUTHORIZED);
     }
 
