@@ -9,13 +9,12 @@ use std::{
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Json, Path, State},
+    extract::{DefaultBodyLimit, Json, Path, Request, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
     middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post, put},
     Router,
-    extract::Request,
 };
 use subtle::ConstantTimeEq;
 
@@ -88,7 +87,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     Ok(())
 }
-
 
 
 fn build_router(state: AppState) -> Router {
@@ -166,7 +164,10 @@ async fn authenticate_request(
     let mut limits = state.rate_limits.lock().await;
     let window = limits.entry(device_id.to_owned()).or_default();
     let now = Instant::now();
-    if window.started.is_none_or(|started| now.duration_since(started) >= RATE_WINDOW) {
+    if window
+        .started
+        .is_none_or(|started| now.duration_since(started) >= RATE_WINDOW)
+    {
         window.started = Some(now);
         window.requests = 0;
     }
@@ -261,7 +262,6 @@ async fn put_object(
     Ok(digest_response(StatusCode::CREATED, digest))
 }
 
-
 async fn head_object(
     State(state): State<AppState>,
     Path((device_id, object_id)): Path<(String, String)>,
@@ -354,7 +354,6 @@ async fn get_manifest(
     Ok(bytes_response(bytes, digest))
 }
 
-
 #[derive(serde::Deserialize)]
 struct CreateUploadRequest {
     object_id: String,
@@ -375,17 +374,22 @@ async fn create_upload(
     let expected = decode_hex_32(&request.expected_blake3).ok_or(StatusCode::BAD_REQUEST)?;
     let _storage_guard = state.storage_lock.lock().await;
     let store = authorized_store(&state, &device_id, &headers)?;
-    if store.total_bytes().map_err(map_store_error)?
-        .saturating_add(request.total_size) > MAX_DEVICE_STORAGE_BYTES
+    if store
+        .total_bytes()
+        .map_err(map_store_error)?
+        .saturating_add(request.total_size)
+        > MAX_DEVICE_STORAGE_BYTES
     {
         return Err(StatusCode::INSUFFICIENT_STORAGE);
     }
-    let info = store.create_upload_session(
-        &request.object_id,
-        request.total_size,
-        request.chunk_size,
-        expected,
-    ).map_err(map_store_error)?;
+    let info = store
+        .create_upload_session(
+            &request.object_id,
+            request.total_size,
+            request.chunk_size,
+            expected,
+        )
+        .map_err(map_store_error)?;
     tracing::info!(
         %device_id,
         upload_id = %info.upload_id,
