@@ -1,4 +1,4 @@
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.99.1-bookworm AS builder
 WORKDIR /workspace
 COPY . .
 RUN cargo build --release -p lifeboat-vault-store

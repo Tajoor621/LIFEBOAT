@@ -6,6 +6,8 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "Dockerfile"
+      - ".dockerignore"
       - "decision-engine/**"
       - "core-crypto/**"
       - "vault/**"
@@ -14,6 +16,8 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "Dockerfile"
+      - ".dockerignore"
       - "decision-engine/**"
       - "core-crypto/**"
       - "vault/**"

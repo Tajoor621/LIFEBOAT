@@ -1,0 +1,45 @@
+name: One-time Rust formatting repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+      - "decision-engine/**/*.rs"
+      - "core-crypto/**/*.rs"
+      - "vault/**/*.rs"
+      - ".github/workflows/format-rust.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rust-format-repair-main
+  cancel-in-progress: false
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          components: rustfmt
+      - name: Apply workspace formatting
+        run: cargo fmt --all
+      - name: Commit formatter changes directly to main
+        run: |
+          if git diff --quiet; then
+            echo "Rust sources already match the pinned formatter."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add decision-engine core-crypto vault
+          git commit -m "style: apply pinned Rust workspace formatting"
+          git push origin HEAD:main
