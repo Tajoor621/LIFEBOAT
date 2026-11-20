@@ -686,7 +686,10 @@ mod tests {
         let cross_device = app.oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/devices/ffeeddccbbaa99887766554433221100/uploads")
+                .uri(format!(
+                    "/v1/devices/ffeeddccbbaa99887766554433221100/uploads/{}",
+                    info.upload_id
+                ))
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap()
