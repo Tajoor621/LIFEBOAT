@@ -28,24 +28,23 @@ pub struct Decision {
 
 pub fn decide(state: EvidenceState) -> Decision {
     use CopyCoverage::*;
-    use Recoverability::*;
 
     if state.local == Conflicting || state.cloud == Conflicting {
-        return Decision { status: Unknown, reason: "conflicting_copy_evidence" };
+        return Decision { status: Recoverability::Unknown, reason: "conflicting_copy_evidence" };
     }
     if state.local == Complete || state.cloud == Complete {
-        return Decision { status: Yes, reason: "complete_verified_copy" };
+        return Decision { status: Recoverability::Yes, reason: "complete_verified_copy" };
     }
     if state.local == Partial || state.cloud == Partial {
-        return Decision { status: Partial, reason: "partial_verified_copy" };
+        return Decision { status: Recoverability::Partial, reason: "partial_verified_copy" };
     }
-    if state.local == Unknown || state.cloud == Unknown || !state.probes_complete {
-        return Decision { status: Unknown, reason: "insufficient_or_incomplete_evidence" };
+    if state.local == CopyCoverage::Unknown || state.cloud == CopyCoverage::Unknown || !state.probes_complete {
+        return Decision { status: Recoverability::Unknown, reason: "insufficient_or_incomplete_evidence" };
     }
     if state.local == Absent && state.cloud == Absent {
-        return Decision { status: No, reason: "all_relevant_sources_confirmed_absent" };
+        return Decision { status: Recoverability::No, reason: "all_relevant_sources_confirmed_absent" };
     }
-    Decision { status: Unknown, reason: "unclassified_evidence" }
+    Decision { status: Recoverability::Unknown, reason: "unclassified_evidence" }
 }
 
 #[cfg(test)]
