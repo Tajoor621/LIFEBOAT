@@ -18,7 +18,7 @@ class VCardWriterTest {
         val value = output.toString()
         assertTrue(value.startsWith("BEGIN:VCARD\r\nVERSION:4.0\r\n"))
         assertTrue(value.contains("FN:نور\\, Noor\\; \\\\"))
-        assertTrue(value.contains("TEL;VALUE=text:+971\\, 50\\;123"))
+        assertTrue(value.contains("TEL;VALUE=uri:tel:+971%2C%2050%3B123"))
         assertTrue(value.contains("EMAIL:noor@example.test"))
         assertTrue(value.endsWith("END:VCARD\r\n"))
     }

@@ -170,8 +170,24 @@ class MainActivity : Activity() {
                 source.inputStream().buffered().use { input ->
                     output.buffered().use { target -> input.copyTo(target) }
                 }
+                val destinationDigest = MessageDigest.getInstance("SHA-256")
+                var destinationBytes = 0L
+                val copied = contentResolver.openInputStream(uri) ?: error("Could not verify selected destination")
+                copied.buffered().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        destinationDigest.update(buffer, 0, count)
+                        destinationBytes += count
+                    }
+                }
+                val destinationHash = destinationDigest.digest().joinToString("") { "%02x".format(it) }
+                check(destinationBytes == snapshot.outputBytes && destinationHash == snapshot.sha256) {
+                    "Destination integrity verification failed"
+                }
                 val evidenceFile = File(filesDir, "contacts-evidence-${snapshot.completedAtEpochMs}.json")
-                val json = """{"startedAtEpochMs":${snapshot.startedAtEpochMs},"completedAtEpochMs":${snapshot.completedAtEpochMs},"providerContactCount":${snapshot.providerContactCount},"exportedContactCount":${snapshot.exportedContactCount},"dataRowsRead":${snapshot.dataRowsRead},"outputBytes":${snapshot.outputBytes},"sha256":"${snapshot.sha256}","completion":"EXPORTED"}"""
+                val json = """{"startedAtEpochMs":${snapshot.startedAtEpochMs},"completedAtEpochMs":${snapshot.completedAtEpochMs},"providerContactCount":${snapshot.providerContactCount},"exportedContactCount":${snapshot.exportedContactCount},"dataRowsRead":${snapshot.dataRowsRead},"outputBytes":${snapshot.outputBytes},"sha256":"${snapshot.sha256}","completion":"EXPORTED_VERIFIED"}"""
                 evidenceFile.writeText(json, Charsets.UTF_8)
                 source.delete()
                 runOnUiThread {

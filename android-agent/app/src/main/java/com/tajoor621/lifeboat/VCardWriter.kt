@@ -22,7 +22,7 @@ object VCardWriter {
         writer.append("N:").append(escape(contact.familyName)).append(";")
             .append(escape(contact.givenName)).append(";;;\r\n")
         contact.phones.filter(String::isNotBlank).distinct().forEach {
-            writer.append("TEL;VALUE=text:").append(escape(it)).append("\r\n")
+            writer.append("TEL;VALUE=uri:tel:").append(phoneUri(it)).append("\r\n")
         }
         contact.emails.filter(String::isNotBlank).distinct().forEach {
             writer.append("EMAIL:").append(escape(it)).append("\r\n")
@@ -35,6 +35,16 @@ object VCardWriter {
         }
         writer.append("END:VCARD\r\n")
         writer.flush()
+    }
+
+    private fun phoneUri(value: String): String = value.toByteArray(Charsets.UTF_8).joinToString("") { byte ->
+        val code = byte.toInt() and 0xff
+        val char = code.toChar()
+        if (char.isLetterOrDigit() || char == '+' || char == '-' || char == '.' || char == '(' || char == ')') {
+            char.toString()
+        } else {
+            "%%%02X".format(code)
+        }
     }
 
     internal fun escape(value: String): String = value
