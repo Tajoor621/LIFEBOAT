@@ -29,6 +29,10 @@ pub enum CryptoError {
     Signature,
     #[error("invalid ciphertext envelope version")]
     EnvelopeVersion,
+    #[error("invalid or unsupported key-wrapper format")]
+    WrapperFormat,
+    #[error("recovery code checksum or encoding is invalid")]
+    RecoveryCode,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,4 +210,229 @@ pub fn verify(
     let key = VerifyingKey::from_bytes(public_key).map_err(|_| CryptoError::Signature)?;
     key.verify_strict(message, &Signature::from_bytes(signature))
         .map_err(|_| CryptoError::Signature)
+}
+
+
+const WRAPPER_VERSION: u8 = 1;
+const MAX_WRAPPER_BYTES: usize = 4096;
+const RECOVERY_PREFIX: &str = "LB1-";
+
+/// Client-side key wrapper. It contains only encrypted copies of the vault master key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyWrapper {
+    pub version: u8,
+    pub vault_id: [u8; 16],
+    pub kdf: Argon2idConfig,
+    pub passphrase_salt: [u8; 16],
+    pub passphrase_envelope: CiphertextEnvelope,
+    pub recovery_envelope: CiphertextEnvelope,
+}
+
+/// The recovery code is deliberately not Debug/Serialize. Display it once, let the
+/// owner print or store it offline, and never send it to the vault server.
+pub struct RecoveryKit {
+    recovery_code: String,
+    vault_id: [u8; 16],
+}
+
+impl RecoveryKit {
+    pub fn recovery_code(&self) -> &str {
+        &self.recovery_code
+    }
+
+    pub fn vault_id(&self) -> [u8; 16] {
+        self.vault_id
+    }
+
+    /// Plain-text print layout. Callers should show this only in an explicit,
+    /// owner-controlled export flow and warn that anyone holding it can unlock the vault.
+    pub fn printable_text(&self) -> String {
+        format!(
+            "LIFEBOAT RECOVERY KIT\\nVault ID: {}\\nRecovery code: {}\\n\\nStore offline in a secure place. Anyone with this code can unlock this vault.\\nDo not photograph, email, or upload this page. Test recovery before relying on it.",
+            encode_hex(&self.vault_id),
+            self.recovery_code
+        )
+    }
+}
+
+pub struct CreatedKeyWrapper {
+    pub wrapper: KeyWrapper,
+    pub recovery_kit: RecoveryKit,
+}
+
+fn wrapper_aad(vault_id: &[u8; 16], slot: &[u8]) -> Vec<u8> {
+    let mut aad = b"LIFEBOAT/key-wrapper/v1/".to_vec();
+    aad.extend_from_slice(vault_id);
+    aad.push(b'/');
+    aad.extend_from_slice(slot);
+    aad
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn decode_hex<const N: usize>(value: &str) -> Result<[u8; N], CryptoError> {
+    if value.len() != N * 2 || !value.is_ascii() {
+        return Err(CryptoError::RecoveryCode);
+    }
+    let mut output = [0u8; N];
+    for (index, byte) in output.iter_mut().enumerate() {
+        let pair = &value[index * 2..index * 2 + 2];
+        *byte = u8::from_str_radix(pair, 16).map_err(|_| CryptoError::RecoveryCode)?;
+        if pair.bytes().any(|c| c.is_ascii_uppercase()) {
+            return Err(CryptoError::RecoveryCode);
+        }
+    }
+    Ok(output)
+}
+
+fn make_recovery_code(secret: &[u8; KEY_LEN]) -> String {
+    let checksum = blake3::hash(secret);
+    format!(
+        "{RECOVERY_PREFIX}{}-{}",
+        encode_hex(secret),
+        encode_hex(&checksum.as_bytes()[..4])
+    )
+}
+
+fn parse_recovery_code(code: &str) -> Result<zeroize::Zeroizing<[u8; KEY_LEN]>, CryptoError> {
+    let remainder = code.strip_prefix(RECOVERY_PREFIX).ok_or(CryptoError::RecoveryCode)?;
+    let (secret_hex, checksum_hex) = remainder.split_once('-').ok_or(CryptoError::RecoveryCode)?;
+    if checksum_hex.len() != 8 {
+        return Err(CryptoError::RecoveryCode);
+    }
+    let secret = zeroize::Zeroizing::new(decode_hex::<KEY_LEN>(secret_hex)?);
+    let checksum = decode_hex::<4>(checksum_hex)?;
+    if blake3::hash(&*secret).as_bytes()[..4] != checksum {
+        return Err(CryptoError::RecoveryCode);
+    }
+    Ok(secret)
+}
+
+impl KeyWrapper {
+    pub fn validate(&self) -> Result<(), CryptoError> {
+        if self.version != WRAPPER_VERSION
+            || self.kdf.validate().is_err()
+            || self.passphrase_envelope.version != 1
+            || self.recovery_envelope.version != 1
+            || self.passphrase_envelope.ciphertext.len() != KEY_LEN + 16
+            || self.recovery_envelope.ciphertext.len() != KEY_LEN + 16
+        {
+            return Err(CryptoError::WrapperFormat);
+        }
+        Ok(())
+    }
+
+    /// Bounded, versioned Postcard encoding for client-side storage/printing workflows.
+    pub fn encode(&self) -> Result<Vec<u8>, CryptoError> {
+        self.validate()?;
+        let bytes = postcard::to_allocvec(self).map_err(|_| CryptoError::WrapperFormat)?;
+        if bytes.len() > MAX_WRAPPER_BYTES {
+            return Err(CryptoError::WrapperFormat);
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, CryptoError> {
+        if bytes.is_empty() || bytes.len() > MAX_WRAPPER_BYTES {
+            return Err(CryptoError::WrapperFormat);
+        }
+        let wrapper: Self =
+            postcard::from_bytes(bytes).map_err(|_| CryptoError::WrapperFormat)?;
+        wrapper.validate()?;
+        Ok(wrapper)
+    }
+}
+
+/// Creates independent passphrase and recovery-code wraps of a random vault master key.
+/// The recovery code is returned once and is never included in the serialized wrapper.
+pub fn create_key_wrapper(
+    master: &SymmetricKey,
+    vault_id: [u8; 16],
+    passphrase: &[u8],
+    kdf: Argon2idConfig,
+) -> Result<CreatedKeyWrapper, CryptoError> {
+    if passphrase.is_empty() {
+        return Err(CryptoError::Kdf);
+    }
+    let mut salt = [0u8; 16];
+    getrandom::fill(&mut salt).map_err(|_| CryptoError::Randomness)?;
+    let passphrase_key = derive_backup_key(passphrase, &salt, kdf)?;
+
+    let mut recovery_secret = zeroize::Zeroizing::new([0u8; KEY_LEN]);
+    getrandom::fill(&mut *recovery_secret).map_err(|_| CryptoError::Randomness)?;
+    let recovery_code = make_recovery_code(&recovery_secret);
+    let recovery_key = SymmetricKey::from_bytes(*recovery_secret);
+
+    let wrapper = KeyWrapper {
+        version: WRAPPER_VERSION,
+        vault_id,
+        kdf,
+        passphrase_salt: salt,
+        passphrase_envelope: seal(
+            &passphrase_key,
+            master.bytes(),
+            &wrapper_aad(&vault_id, b"passphrase"),
+        )?,
+        recovery_envelope: seal(
+            &recovery_key,
+            master.bytes(),
+            &wrapper_aad(&vault_id, b"recovery"),
+        )?,
+    };
+    wrapper.validate()?;
+
+    Ok(CreatedKeyWrapper {
+        wrapper,
+        recovery_kit: RecoveryKit {
+            recovery_code,
+            vault_id,
+        },
+    })
+}
+
+/// Unlocks the master key using the owner's passphrase.
+pub fn unlock_with_passphrase(
+    wrapper: &KeyWrapper,
+    passphrase: &[u8],
+) -> Result<SymmetricKey, CryptoError> {
+    wrapper.validate()?;
+    let key = derive_backup_key(passphrase, &wrapper.passphrase_salt, wrapper.kdf)?;
+    let plaintext = zeroize::Zeroizing::new(open(
+        &key,
+        &wrapper.passphrase_envelope,
+        &wrapper_aad(&wrapper.vault_id, b"passphrase"),
+    )?);
+    let master: [u8; KEY_LEN] = plaintext
+        .as_slice()
+        .try_into()
+        .map_err(|_| CryptoError::WrapperFormat)?;
+    Ok(SymmetricKey::from_bytes(master))
+}
+
+/// Unlocks the master key from the offline recovery code.
+pub fn unlock_with_recovery_code(
+    wrapper: &KeyWrapper,
+    recovery_code: &str,
+) -> Result<SymmetricKey, CryptoError> {
+    wrapper.validate()?;
+    let secret = parse_recovery_code(recovery_code)?;
+    let key = SymmetricKey::from_bytes(*secret);
+    let plaintext = zeroize::Zeroizing::new(open(
+        &key,
+        &wrapper.recovery_envelope,
+        &wrapper_aad(&wrapper.vault_id, b"recovery"),
+    )?);
+    let master: [u8; KEY_LEN] = plaintext
+        .as_slice()
+        .try_into()
+        .map_err(|_| CryptoError::WrapperFormat)?;
+    Ok(SymmetricKey::from_bytes(master))
 }
