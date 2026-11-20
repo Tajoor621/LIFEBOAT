@@ -210,7 +210,12 @@ mod tests {
             |class, path| {
                 let bytes = fs::read(path).map_err(|error| error.to_string())?;
                 match class {
-                    DataClass::Contacts if bytes.starts_with(b"BEGIN:VCARD\n") && bytes.ends_with(b"END:VCARD\n") => Ok(()),
+                    DataClass::Contacts
+                        if bytes.starts_with(b"BEGIN:VCARD\n")
+                            && bytes.ends_with(b"END:VCARD\n") =>
+                    {
+                        Ok(())
+                    }
                     DataClass::Photos if bytes == photo => Ok(()),
                     _ => Err("test parser rejected restored item".into()),
                 }
