@@ -13,7 +13,7 @@ use axum::{
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     middleware::{self, Next},
-    routing::{get, post, put},
+    routing::{get, head, post, put},
     Router,
     extract::Request,
 };
@@ -94,7 +94,7 @@ fn build_router(state: AppState) -> Router {
             .route("/healthz", get(health))
             .route(
                 "/v1/devices/{device_id}/objects/{object_id}",
-                put(put_object).get(get_object),
+                put(put_object).get(get_object).head(head_object),
             )
             .route(
                 "/v1/devices/{device_id}/manifests/{snapshot_id}",
@@ -250,6 +250,25 @@ async fn put_object(
         .map_err(map_store_error)?;
     tracing::info!(%device_id, %object_id, bytes = body.len(), action = "object_put");
     Ok(digest_response(StatusCode::CREATED, digest))
+}
+
+
+async fn head_object(
+    State(state): State<AppState>,
+    Path((device_id, object_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    if !valid_hex_id(&object_id, 64) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let store = authorized_store(&state, &device_id, &headers)?;
+    let (size, digest) = store.object_metadata(&object_id).map_err(map_store_error)?;
+    let mut response = digest_response(StatusCode::OK, digest);
+    response.headers_mut().insert(
+        header::CONTENT_LENGTH,
+        HeaderValue::from_str(&size.to_string()).expect("decimal length is a valid header"),
+    );
+    Ok(response)
 }
 
 async fn get_object(
