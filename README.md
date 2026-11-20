@@ -16,7 +16,7 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 ## Roadmap
 
 1. **P0 — Reality and architecture:** platform constraints, truth table, threat model, and ADRs.
-2. **P1 — Core crypto, manifests, and vault:** client-side encryption primitives, versioned manifest encoding, immutable ciphertext storage. Network API and production key lifecycle remain gated follow-up work.
+2. **P1 — Core crypto, manifests, and vault:** client-side encryption primitives, versioned manifest encoding, immutable ciphertext storage, and the first authenticated HTTP transport layer.
 3. P2 — Android backup agent and restore.
 4. P3 — Recovery decision engine and evidence-based reports.
 5. P4 — Cloud connectors and export ingestion.
@@ -26,14 +26,27 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 
 ## Current implementation
 
-- decision-engine/: four-state evidence-based recoverability evaluator.
-- core-crypto/: XChaCha20-Poly1305 envelope, Argon2id key derivation, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, and versioned snapshot manifest encoding.
-- vault/: local immutable ciphertext object and encrypted-manifest storage with size and integrity checks.
-- docs/REALITY.md: platform constraints and release gates.
-- THREAT_MODEL.md: threats, controls, and wipe safety gate.
-- docs/RecoverabilityTruthTable.md: normative per-data-class status rules.
+- `decision-engine/`: four-state evidence-based recoverability evaluator.
+- `core-crypto/`: XChaCha20-Poly1305 envelope, Argon2id key derivation, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, and versioned snapshot manifest encoding.
+- `vault/`: local immutable ciphertext storage plus an Axum HTTP API with per-device bearer authentication, device-scoped storage, bounded bodies, immutable PUT, and digest-verified GET.
+- `docs/VAULT_API.md`: API protocol, credential configuration, deployment constraints, and explicit security limitations.
+- `docs/REALITY.md`: platform constraints and release gates.
+- `THREAT_MODEL.md`: threats, controls, and wipe safety gate.
+- `docs/RecoverabilityTruthTable.md`: normative per-data-class status rules.
 
-This is an early P1 foundation, not a production-ready backup service. The vault crate is currently a local storage engine, not a network service. Streaming large objects, authenticated HTTP endpoints, quotas, retention, key wrapping/recovery, crash reconciliation, fuzzing, interoperability vectors, and independent security review are not yet complete.
+This is an early P1 foundation, **not a production-ready backup service**. P1.2 adds a first authenticated API boundary but does not yet provide TLS termination, device enrollment, token revocation, quotas, rate limiting, resumable transfer sessions, append-only audit storage, retention controls, S3 storage, or independent security review. Do not expose the API directly to the public Internet. The API accepts opaque encrypted bytes only; it does not decrypt backups.
+
+## Local development
+
+```sh
+cargo fmt --all -- --check
+cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+## Self-hosted container
+
+See `docs/VAULT_API.md` for secure credential generation and limitations. The Compose file binds the published port to host loopback only. Configure `LIFEBOAT_DEVICE_TOKENS` in the host environment before running `docker compose up --build -d`. Use a TLS reverse proxy and restricted network access for remote clients.
 
 ## Architecture
 
@@ -41,9 +54,9 @@ This is an early P1 foundation, not a production-ready backup service. The vault
 - Shared core and vault: Rust
 - Desktop console: Tauri + React
 - Local metadata and queues: SQLite
-- Encrypted blob storage: local filesystem or S3-compatible storage
+- Encrypted blob storage: local filesystem or S3-compatible storage (S3 adapter not implemented)
 - Self-hosting: Docker Compose; Raspberry Pi and VPS are targets subject to measured resource limits
 
 ## Safety and licensing
 
-Use only for devices and accounts you own or are explicitly authorized to administer. Server and agent applications are planned AGPL-3.0-or-later; reusable core libraries are planned MIT. License boundaries and files must be finalized before release.
+Use only for devices and accounts you own or are explicitly authorized to administer. Server and agent applications are planned AGPL-3.0-or-later; reusable core libraries are MIT. License boundaries and files must be finalized before release.
