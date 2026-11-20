@@ -29,7 +29,8 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 - `decision-engine/`: four-state evidence-based recoverability evaluator.
 - `core-crypto/`: XChaCha20-Poly1305 envelopes, Argon2id key derivation, dual passphrase/recovery-code vault-key wrapping, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, versioned snapshot manifests, and a scratch restore-rehearsal verifier that checks every contact item plus a deterministic sample using caller-supplied format parsers.
 - `vault/`: local immutable ciphertext storage plus an Axum HTTP API with pre-body per-device bearer authentication, per-device rate/storage limits, immutable object and manifest writes, digest-verified reads, verified HEAD probes, and persistent resumable chunk uploads.
-- `docs/VAULT_API.md`: API protocol, credential configuration, deployment constraints, and explicit security limitations.\n- `docs/RECOVERY_KIT.md`: offline key recovery, owner-handling rules, and restore-rehearsal evidence boundaries.
+- `docs/VAULT_API.md`: API protocol, credential configuration, deployment constraints, and explicit security limitations.
+- `docs/RECOVERY_KIT.md`: offline key recovery, owner-handling rules, and restore-rehearsal evidence boundaries.
 - `docs/REALITY.md`: platform constraints and release gates.
 - `THREAT_MODEL.md`: threats, controls, and wipe safety gate.
 - `docs/RecoverabilityTruthTable.md`: normative per-data-class status rules.
