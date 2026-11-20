@@ -155,6 +155,7 @@ where
                 .write(true)
                 .create_new(true)
                 .open(&path)?;
+            report.restored_files.push(path.clone());
             file.write_all(&restored)?;
             file.sync_all()?;
             drop(file);
@@ -164,7 +165,6 @@ where
                 return Err(RestoreError::InvalidItem(error));
             }
             report.verified_items += 1;
-            report.restored_files.push(path);
         }
         Ok(())
     })();
