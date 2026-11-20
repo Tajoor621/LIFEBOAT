@@ -780,7 +780,7 @@ mod tests {
                         .method("GET")
                         .uri(format!("/v1/devices/{device_id}/objects/{object_id}"))
                         .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                        .header("x-lifeboat-content-blake3", &digest)
+                        .header("x-lifeboat-content-blake3", digest.as_str())
                         .body(Body::empty())
                         .unwrap(),
                 )
