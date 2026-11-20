@@ -267,8 +267,9 @@ impl VaultStore {
             .as_secs();
         for entry in fs::read_dir(self.root.join("uploads"))? {
             let entry = entry?;
-            if entry.path().extension().is_some_and(|ext| ext == "json") {
-                let session: UploadSession = match fs::read(entry.path())
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "json") {
+                let session: UploadSession = match fs::read(&path)
                     .ok()
                     .and_then(|bytes| serde_json::from_slice(&bytes).ok())
                 {
@@ -276,15 +277,25 @@ impl VaultStore {
                     None => continue,
                 };
                 if now.saturating_sub(session.created_at_unix) > RETENTION_SECONDS {
-                    let stem = entry
-                        .path()
+                    let stem = path
                         .file_stem()
-                        .and_then(|s| s.to_str())
+                        .and_then(|value| value.to_str())
                         .unwrap_or_default()
                         .to_owned();
                     let _ = fs::remove_file(self.upload_part_path(&stem));
-                    let _ = fs::remove_file(entry.path());
+                    let _ = fs::remove_file(path);
                 }
+            } else if path.extension().is_some_and(|ext| ext == "part") {
+                let stem = path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                if !self.upload_session_path(&stem).exists() {
+                    let _ = fs::remove_file(path);
+                }
+            } else if entry.file_name().to_string_lossy().starts_with('.') {
+                let _ = fs::remove_file(path);
             }
         }
         Ok(())
