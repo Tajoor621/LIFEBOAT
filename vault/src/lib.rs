@@ -34,11 +34,18 @@ pub enum StoreError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct UploadReceipt {
+    object_id: String,
+    digest: [u8; 32],
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UploadSession {
     object_id: String,
     total_size: u64,
     chunk_size: u32,
     expected_digest: [u8; 32],
+    created_at_unix: u64,
     chunks: Vec<Option<[u8; 32]>>,
 }
 
@@ -98,8 +105,20 @@ impl VaultStore {
             total_size,
             chunk_size,
             expected_digest,
+            created_at_unix: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
             chunks: vec![None; chunk_count],
         };
+        self.prune_expired_uploads()?;
+        let active_sessions = fs::read_dir(self.root.join("uploads"))?
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            .count();
+        if active_sessions >= 32 {
+            return Err(StoreError::TooLarge);
+        }
         let part_path = self.upload_part_path(&upload_id);
         let mut part = OpenOptions::new().write(true).create_new(true).open(&part_path)?;
         part.set_len(total_size)?;
@@ -152,7 +171,18 @@ impl VaultStore {
         validate_id(upload_id, 32)?;
         let session_path = self.upload_session_path(upload_id);
         if !session_path.exists() {
-            return Err(StoreError::SessionNotFound);
+            let receipt_path = self.upload_receipt_path(upload_id);
+            let receipt_bytes = fs::read(receipt_path).map_err(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    StoreError::SessionNotFound
+                } else {
+                    StoreError::Io(error)
+                }
+            })?;
+            let receipt: UploadReceipt =
+                serde_json::from_slice(&receipt_bytes).map_err(|_| StoreError::Integrity)?;
+            self.get_object(&receipt.object_id, receipt.digest)?;
+            return Ok(receipt.digest);
         }
         let session = self.load_upload_session(upload_id)?;
         if session.chunks.iter().any(Option::is_none) {
@@ -166,7 +196,20 @@ impl VaultStore {
         if bytes.len() as u64 != session.total_size || digest != session.expected_digest {
             return Err(StoreError::DigestMismatch);
         }
-        self.put_object(&session.object_id, &bytes)?;
+        match self.put_object(&session.object_id, &bytes) {
+            Ok(_) => {}
+            Err(StoreError::AlreadyExists) => {
+                self.get_object(&session.object_id, digest)?;
+            }
+            Err(error) => return Err(error),
+        }
+        self.save_upload_receipt(
+            upload_id,
+            &UploadReceipt {
+                object_id: session.object_id,
+                digest,
+            },
+        )?;
         let _ = fs::remove_file(self.upload_part_path(upload_id));
         let _ = fs::remove_file(session_path);
         Ok(digest)
@@ -180,6 +223,50 @@ impl VaultStore {
         self.root.join("uploads").join(format!("{upload_id}.part"))
     }
 
+    fn upload_receipt_path(&self, upload_id: &str) -> PathBuf {
+        self.root.join("uploads").join(format!("{upload_id}.done"))
+    }
+
+    fn save_upload_receipt(&self, upload_id: &str, receipt: &UploadReceipt) -> Result<(), StoreError> {
+        let mut random = [0u8; 8];
+        getrandom::fill(&mut random).map_err(|_| StoreError::Randomness)?;
+        let temp_path = self.root.join("uploads").join(format!(".{upload_id}-{}.receipt.tmp", hex_encode(&random)));
+        let bytes = serde_json::to_vec(receipt).map_err(|_| StoreError::Integrity)?;
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temp_path, self.upload_receipt_path(upload_id))?;
+        File::open(self.root.join("uploads"))?.sync_all()?;
+        Ok(())
+    }
+
+    fn prune_expired_uploads(&self) -> Result<(), StoreError> {
+        const RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for entry in fs::read_dir(self.root.join("uploads"))? {
+            let entry = entry?;
+            if entry.path().extension().is_some_and(|ext| ext == "json") {
+                let session: UploadSession = match fs::read(entry.path())
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                {
+                    Some(session) => session,
+                    None => continue,
+                };
+                if now.saturating_sub(session.created_at_unix) > RETENTION_SECONDS {
+                    let stem = entry.path().file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_owned();
+                    let _ = fs::remove_file(self.upload_part_path(&stem));
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn load_upload_session(&self, upload_id: &str) -> Result<UploadSession, StoreError> {
         let bytes = fs::read(self.upload_session_path(upload_id))
             .map_err(|error| if error.kind() == std::io::ErrorKind::NotFound {
@@ -187,7 +274,19 @@ impl VaultStore {
             } else {
                 StoreError::Io(error)
             })?;
-        serde_json::from_slice(&bytes).map_err(|_| StoreError::Integrity)
+        let session: UploadSession =
+            serde_json::from_slice(&bytes).map_err(|_| StoreError::Integrity)?;
+        let expected_chunks = session.total_size.div_ceil(session.chunk_size.max(1) as u64);
+        if session.total_size == 0
+            || session.total_size > self.max_object_bytes
+            || !(64 * 1024..=1024 * 1024).contains(&session.chunk_size)
+            || expected_chunks > 256
+            || session.chunks.len() != expected_chunks as usize
+            || validate_id(&session.object_id, 64).is_err()
+        {
+            return Err(StoreError::Integrity);
+        }
+        Ok(session)
     }
 
     fn save_upload_session(&self, upload_id: &str, session: &UploadSession) -> Result<(), StoreError> {
@@ -200,6 +299,7 @@ impl VaultStore {
         file.sync_all()?;
         drop(file);
         fs::rename(&temp_path, self.upload_session_path(upload_id))?;
+        File::open(self.root.join("uploads"))?.sync_all()?;
         Ok(())
     }
 
@@ -368,7 +468,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resumable_upload_survives_store_reopen_and_commits_only_verified_bytes() {
+    fn resumable_upload_survives_store_reopen_and_completion_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let store = VaultStore::open(dir.path(), 2 * 1024 * 1024).unwrap();
         let payload = vec![7u8; 100_000];
@@ -382,6 +482,7 @@ mod tests {
         assert_eq!(reopened.upload_session_info(&session.upload_id).unwrap().received_bytes, 65_536);
         assert!(matches!(reopened.complete_upload(&session.upload_id), Err(StoreError::Incomplete)));
         reopened.put_upload_chunk(&session.upload_id, 1, second, *blake3::hash(second).as_bytes()).unwrap();
+        assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
         assert_eq!(reopened.complete_upload(&session.upload_id).unwrap(), digest);
         assert_eq!(reopened.get_object(&object_id, digest).unwrap(), payload);
     }
