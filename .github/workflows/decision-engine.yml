@@ -41,3 +41,5 @@ jobs:
         run: cargo test --workspace --all-targets
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build production container image
+        run: docker build -t lifeboat-vault:ci .
