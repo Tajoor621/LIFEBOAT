@@ -17,13 +17,14 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 
 1. **P0 — Reality and architecture:** platform constraints, truth table, threat model, and ADRs.
 2. **P1 — Core crypto, manifests, and vault:** client-side encryption primitives, versioned manifest encoding, immutable ciphertext storage, and the first authenticated HTTP transport layer.
-3. **P1.5 — Integration and security validation:** cross-layer failure tests, restore integrity checks, API abuse tests, and container build verification. Execution and independent review remain required.
-4. P2 — Android backup agent and restore.
-5. P3 — Recovery decision engine and evidence-based reports.
-6. P4 — Cloud connectors and export ingestion.
-7. P5 — In-hand rescue workflows.
-8. P6 — Authenticated remote commands and guarded wipe state machine.
-9. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
+3. **P1.5 — Integration and security validation:** cross-layer failure tests, restore integrity checks, API abuse tests, and container build verification. Automated CI passed on `863474b`; manual validation and independent review remain required.
+4. **P1.6 — Vault hardening:** reproducible dependency lock, pre-extraction body limits, credential lifecycle, durable audit, and storage failure tests.
+5. P2 — Android backup agent and restore.
+6. P3 — Recovery decision engine and evidence-based reports.
+7. P4 — Cloud connectors and export ingestion.
+8. P5 — In-hand rescue workflows.
+9. P6 — Authenticated remote commands and guarded wipe state machine.
+10. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
 
 ## Current implementation
 
@@ -37,7 +38,7 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 - `THREAT_MODEL.md`: threats, controls, and wipe safety gate.
 - `docs/RecoverabilityTruthTable.md`: normative per-data-class status rules.
 
-This is an early P1 foundation, **not a production-ready backup service**. P1.2/P1.3 add an authenticated API, per-device request/storage limits, immutable storage, and resumable chunk sessions. P1.4 adds client-side dual key wrapping, an offline recovery code, and an item-level restore-rehearsal primitive. P1.5 adds API rate-limit and immutability tests, multi-chunk restore coverage, and a Docker image build in CI. P1.5 is not accepted until those checks run green and the documented manual validation is completed. TLS termination, device enrollment, online token revocation, durable distributed rate limiting, tamper-evident audit storage, committed-object retention controls, S3 storage, and independent security review remain outstanding. The Recovery Kit is currently a printable text format, not yet a BIP-39 mnemonic, QR/PDF UI, or proven cross-device restore workflow. Do not expose the API directly to the public Internet. The API accepts opaque encrypted bytes only; it does not decrypt backups.
+This is an early P1 foundation, **not a production-ready backup service**. P1.2/P1.3 add an authenticated API, per-device request/storage limits, immutable storage, and resumable chunk sessions. P1.4 adds client-side dual key wrapping, an offline recovery code, and an item-level restore-rehearsal primitive. P1.5 adds API rate-limit and immutability tests, multi-chunk restore coverage, and a Docker image build in CI; all four automated gates passed together on commit `863474b` ([run 44730376308](https://github.com/Tajoor621/LIFEBOAT/actions/runs/44730376308)). Manual validation remains incomplete. P1.6 is the next engineering phase. TLS termination, device enrollment, online token revocation, durable distributed rate limiting, tamper-evident audit storage, committed-object retention controls, S3 storage, and independent security review remain outstanding. The Recovery Kit is currently a printable text format, not yet a BIP-39 mnemonic, QR/PDF UI, or proven cross-device restore workflow. Do not expose the API directly to the public Internet. The API accepts opaque encrypted bytes only; it does not decrypt backups.
 
 ## Local development
 
