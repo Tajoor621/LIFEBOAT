@@ -324,6 +324,26 @@ impl VaultStore {
         self.put_immutable("objects", id, 64, ciphertext)
     }
 
+    /// Reads and hashes an immutable object so clients can verify a deduplication hit.
+    pub fn object_metadata(&self, id: &str) -> Result<(u64, [u8; 32]), StoreError> {
+        validate_id(id, 64)?;
+        let path = self.root.join("objects").join(id);
+        let metadata = fs::metadata(&path)?;
+        if metadata.len() > self.max_object_bytes {
+            return Err(StoreError::TooLarge);
+        }
+        let mut bytes = Vec::with_capacity(
+            usize::try_from(metadata.len()).map_err(|_| StoreError::TooLarge)?,
+        );
+        File::open(path)?
+            .take(self.max_object_bytes.saturating_add(1))
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 != metadata.len() {
+            return Err(StoreError::Integrity);
+        }
+        Ok((metadata.len(), *blake3::hash(&bytes).as_bytes()))
+    }
+
     pub fn get_object(
         &self,
         id: &str,
@@ -497,6 +517,16 @@ mod tests {
         let digest = *blake3::hash(&payload).as_bytes();
         store.put_upload_chunk(&session.upload_id, 0, &payload, digest).unwrap();
         assert!(matches!(store.put_upload_chunk(&session.upload_id, 0, &vec![4u8; 65_536], *blake3::hash(&vec![4u8; 65_536]).as_bytes()), Err(StoreError::SessionConflict)));
+    }
+
+    #[test]
+    fn object_metadata_exposes_verified_digest_for_deduplication() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = VaultStore::open(dir.path(), 1024).unwrap();
+        let payload = b"already encrypted";
+        let id = "ac".repeat(32);
+        let expected = store.put_object(&id, payload).unwrap();
+        assert_eq!(store.object_metadata(&id).unwrap(), (payload.len() as u64, expected));
     }
 
     #[test]
