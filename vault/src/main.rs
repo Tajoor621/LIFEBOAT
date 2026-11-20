@@ -9,11 +9,11 @@ use std::{
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Json, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     middleware::{self, Next},
-    routing::{get, put},
+    routing::{get, post, put},
     Router,
     extract::Request,
 };
@@ -85,6 +85,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/devices/{device_id}/manifests/{snapshot_id}",
             put(put_manifest).get(get_manifest),
         )
+        .route(
+            "/v1/devices/{device_id}/uploads",
+            post(create_upload),
+        )
+        .route(
+            "/v1/devices/{device_id}/uploads/{upload_id}",
+            get(get_upload_status),
+        )
+        .route(
+            "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
+            put(put_upload_chunk),
+        )
+        .route(
+            "/v1/devices/{device_id}/uploads/{upload_id}/complete",
+            post(complete_upload),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate_request))
         .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
         .with_state(state);
@@ -111,13 +127,16 @@ async fn authenticate_request(
     }
 
     let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
-    if segments.len() != 5 || segments[0] != "v1" || segments[1] != "devices" {
+    if segments.len() < 4 || segments[0] != "v1" || segments[1] != "devices" {
         return StatusCode::NOT_FOUND.into_response();
     }
     let device_id = segments[2];
-    if !valid_hex_id(device_id, 32)
-        || !matches!(segments[3], "objects" | "manifests" | "uploads")
-    {
+    let valid_route = match segments.get(3).copied() {
+        Some("objects" | "manifests") => segments.len() == 5,
+        Some("uploads") => matches!(segments.len(), 4 | 5 | 6 | 7),
+        _ => false,
+    };
+    if !valid_hex_id(device_id, 32) || !valid_route {
         return StatusCode::NOT_FOUND.into_response();
     }
 
@@ -287,6 +306,86 @@ async fn get_manifest(
     Ok(bytes_response(bytes, digest))
 }
 
+
+#[derive(serde::Deserialize)]
+struct CreateUploadRequest {
+    object_id: String,
+    total_size: u64,
+    chunk_size: u32,
+    expected_blake3: String,
+}
+
+async fn create_upload(
+    State(state): State<AppState>,
+    Path(device_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<CreateUploadRequest>,
+) -> Result<Response, StatusCode> {
+    if !valid_hex_id(&request.object_id, 64) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let expected = decode_hex_32(&request.expected_blake3).ok_or(StatusCode::BAD_REQUEST)?;
+    let _storage_guard = state.storage_lock.lock().await;
+    let store = authorized_store(&state, &device_id, &headers)?;
+    if store.total_bytes().map_err(map_store_error)?
+        .saturating_add(request.total_size) > MAX_DEVICE_STORAGE_BYTES
+    {
+        return Err(StatusCode::INSUFFICIENT_STORAGE);
+    }
+    let info = store.create_upload_session(
+        &request.object_id,
+        request.total_size,
+        request.chunk_size,
+        expected,
+    ).map_err(map_store_error)?;
+    tracing::info!(%device_id, upload_id = %info.upload_id, bytes = info.total_size, action = "upload_session_create");
+    Ok((StatusCode::CREATED, Json(info)).into_response())
+}
+
+async fn get_upload_status(
+    State(state): State<AppState>,
+    Path((device_id, upload_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    let store = authorized_store(&state, &device_id, &headers)?;
+    let info = store.upload_session_info(&upload_id).map_err(map_store_error)?;
+    Ok(Json(info).into_response())
+}
+
+async fn put_upload_chunk(
+    State(state): State<AppState>,
+    Path((device_id, upload_id, chunk_index)): Path<(String, String, usize)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, StatusCode> {
+    if body.len() > 1024 * 1024 {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let digest_header = headers
+        .get("x-lifeboat-chunk-blake3")
+        .and_then(|value| value.to_str().ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let digest = decode_hex_32(digest_header).ok_or(StatusCode::BAD_REQUEST)?;
+    let _storage_guard = state.storage_lock.lock().await;
+    let store = authorized_store(&state, &device_id, &headers)?;
+    let info = store.put_upload_chunk(&upload_id, chunk_index, &body, digest)
+        .map_err(map_store_error)?;
+    tracing::info!(%device_id, %upload_id, chunk_index, bytes = body.len(), action = "upload_chunk_put");
+    Ok(Json(info).into_response())
+}
+
+async fn complete_upload(
+    State(state): State<AppState>,
+    Path((device_id, upload_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    let _storage_guard = state.storage_lock.lock().await;
+    let store = authorized_store(&state, &device_id, &headers)?;
+    let digest = store.complete_upload(&upload_id).map_err(map_store_error)?;
+    tracing::info!(%device_id, %upload_id, action = "upload_complete");
+    Ok(digest_response(StatusCode::CREATED, digest))
+}
+
 fn required_digest(headers: &HeaderMap) -> Result<[u8; 32], StatusCode> {
     let value = headers
         .get("x-lifeboat-content-blake3")
@@ -321,7 +420,9 @@ fn map_store_error(error: StoreError) -> StatusCode {
     match error {
         StoreError::InvalidId => StatusCode::BAD_REQUEST,
         StoreError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-        StoreError::AlreadyExists => StatusCode::CONFLICT,
+        StoreError::AlreadyExists | StoreError::SessionConflict => StatusCode::CONFLICT,
+        StoreError::SessionNotFound => StatusCode::NOT_FOUND,
+        StoreError::Incomplete | StoreError::DigestMismatch => StatusCode::UNPROCESSABLE_ENTITY,
         StoreError::Io(error) if error.kind() == std::io::ErrorKind::NotFound => {
             StatusCode::NOT_FOUND
         }
