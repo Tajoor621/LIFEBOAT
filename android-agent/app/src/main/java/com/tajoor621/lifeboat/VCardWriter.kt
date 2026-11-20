@@ -34,7 +34,6 @@ object VCardWriter {
             writer.append("ADR:;;").append(escape(it)).append(";;;;\r\n")
         }
         writer.append("END:VCARD\r\n")
-        writer.flush()
     }
 
     private fun phoneUri(value: String): String = value.toByteArray(Charsets.UTF_8).joinToString("") { byte ->
