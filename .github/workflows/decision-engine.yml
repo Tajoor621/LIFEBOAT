@@ -11,6 +11,8 @@ on:
       - "decision-engine/**"
       - "core-crypto/**"
       - "vault/**"
+      - "docs/P1.2-P1.3_IMPLEMENTATION_AUDIT.md"
+      - "docs/P1.5_VALIDATION_PLAN.md"
       - ".github/workflows/decision-engine.yml"
   pull_request:
     paths:
