@@ -762,7 +762,6 @@ mod tests {
         assert_eq!(cross_device.status(), StatusCode::UNAUTHORIZED);
     }
 
-    
     #[tokio::test]
     async fn per_device_rate_limit_rejects_request_121_in_window() {
         let state = test_state();
