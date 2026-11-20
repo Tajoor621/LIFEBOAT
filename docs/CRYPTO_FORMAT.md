@@ -36,7 +36,7 @@ The current manifest uses a fixed-schema Postcard encoding with a format version
 
 The local store accepts lowercase hexadecimal opaque IDs, uses separate object and manifest namespaces, writes to a temporary file and syncs it, then uses create-if-absent hard-link semantics. It refuses overwrites, enforces a configured size limit, and verifies BLAKE3 on reads.
 
-It is not a network server. It does not authenticate callers, authorize devices, enforce quotas/retention, stream large files, or protect against a malicious local administrator. These remain P1 follow-up work.
+The filesystem store is a storage primitive. The separate `vault/` Axum service adds per-device bearer authentication, per-device quotas/rate limits, bounded request bodies, and resumable chunk transfers. TLS termination, device enrollment, token revocation, durable distributed rate limits, retention/deletion controls, multi-node coordination, and protection from a malicious local administrator remain deployment/release gates.
 
 
 ## Vault key wrapper and offline recovery kit (P1.4)
