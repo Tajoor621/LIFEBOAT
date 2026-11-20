@@ -53,7 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let token_config = env::var("LIFEBOAT_DEVICE_TOKENS")
-        .map_err(|_| "LIFEBOAT_DEVICE_TOKENS is required; refusing to start without device credentials")?;
+        .map_err(|_| {
+            "LIFEBOAT_DEVICE_TOKENS is required; refusing to start without device credentials"
+        })?;
     let device_token_hashes = parse_device_tokens(&token_config)?;
     if device_token_hashes.is_empty() {
         return Err("at least one device credential must be configured".into());
@@ -90,35 +92,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
 fn build_router(state: AppState) -> Router {
-        Router::new()
-            .route("/healthz", get(health))
-            .route(
-                "/v1/devices/{device_id}/objects/{object_id}",
-                put(put_object).get(get_object).head(head_object),
-            )
-            .route(
-                "/v1/devices/{device_id}/manifests/{snapshot_id}",
-                put(put_manifest).get(get_manifest),
-            )
-            .route(
-                "/v1/devices/{device_id}/uploads",
-                post(create_upload),
-            )
-            .route(
-                "/v1/devices/{device_id}/uploads/{upload_id}",
-                get(get_upload_status),
-            )
-            .route(
-                "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
-                put(put_upload_chunk),
-            )
-            .route(
-                "/v1/devices/{device_id}/uploads/{upload_id}/complete",
-                post(complete_upload),
-            )
-            .route_layer(middleware::from_fn_with_state(state.clone(), authenticate_request))
-            .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
-            .with_state(state)
+    Router::new()
+        .route("/healthz", get(health))
+        .route(
+            "/v1/devices/{device_id}/objects/{object_id}",
+            put(put_object).get(get_object).head(head_object),
+        )
+        .route(
+            "/v1/devices/{device_id}/manifests/{snapshot_id}",
+            put(put_manifest).get(get_manifest),
+        )
+        .route("/v1/devices/{device_id}/uploads", post(create_upload))
+        .route(
+            "/v1/devices/{device_id}/uploads/{upload_id}",
+            get(get_upload_status),
+        )
+        .route(
+            "/v1/devices/{device_id}/uploads/{upload_id}/chunks/{chunk_index}",
+            put(put_upload_chunk),
+        )
+        .route(
+            "/v1/devices/{device_id}/uploads/{upload_id}/complete",
+            post(complete_upload),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            authenticate_request,
+        ))
+        .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
+        .with_state(state)
 }
 
 async fn authenticate_request(
@@ -188,7 +190,9 @@ fn parse_device_tokens(input: &str) -> Result<HashMap<String, [u8; 32]>, &'stati
             .split_once(':')
             .ok_or("credential entries must use device_id:token format")?;
         if !valid_hex_id(device_id, 32) || token.len() < 32 {
-            return Err("device IDs must be 32 lowercase hex characters and tokens at least 32 bytes");
+            return Err(
+                "device IDs must be 32 lowercase hex characters and tokens at least 32 bytes",
+            );
         }
         let digest = *blake3::hash(token.as_bytes()).as_bytes();
         if credentials.insert(device_id.to_owned(), digest).is_some() {
@@ -248,7 +252,12 @@ async fn put_object(
     let digest = store
         .put_object(&object_id, &body)
         .map_err(map_store_error)?;
-    tracing::info!(%device_id, %object_id, bytes = body.len(), action = "object_put");
+    tracing::info!(
+        %device_id,
+        %object_id,
+        bytes = body.len(),
+        action = "object_put"
+    );
     Ok(digest_response(StatusCode::CREATED, digest))
 }
 
@@ -284,7 +293,12 @@ async fn get_object(
     let bytes = store
         .get_object(&object_id, digest)
         .map_err(map_store_error)?;
-    tracing::info!(%device_id, %object_id, bytes = bytes.len(), action = "object_get");
+    tracing::info!(
+        %device_id,
+        %object_id,
+        bytes = bytes.len(),
+        action = "object_get"
+    );
     Ok(bytes_response(bytes, digest))
 }
 
@@ -309,7 +323,12 @@ async fn put_manifest(
     let digest = store
         .put_manifest(&snapshot_id, &body)
         .map_err(map_store_error)?;
-    tracing::info!(%device_id, %snapshot_id, bytes = body.len(), action = "manifest_put");
+    tracing::info!(
+        %device_id,
+        %snapshot_id,
+        bytes = body.len(),
+        action = "manifest_put"
+    );
     Ok(digest_response(StatusCode::CREATED, digest))
 }
 
@@ -326,7 +345,12 @@ async fn get_manifest(
     let bytes = store
         .get_manifest(&snapshot_id, digest)
         .map_err(map_store_error)?;
-    tracing::info!(%device_id, %snapshot_id, bytes = bytes.len(), action = "manifest_get");
+    tracing::info!(
+        %device_id,
+        %snapshot_id,
+        bytes = bytes.len(),
+        action = "manifest_get"
+    );
     Ok(bytes_response(bytes, digest))
 }
 
@@ -362,7 +386,12 @@ async fn create_upload(
         request.chunk_size,
         expected,
     ).map_err(map_store_error)?;
-    tracing::info!(%device_id, upload_id = %info.upload_id, bytes = info.total_size, action = "upload_session_create");
+    tracing::info!(
+        %device_id,
+        upload_id = %info.upload_id,
+        bytes = info.total_size,
+        action = "upload_session_create"
+    );
     Ok((StatusCode::CREATED, Json(info)).into_response())
 }
 
@@ -392,9 +421,16 @@ async fn put_upload_chunk(
     let digest = decode_hex_32(digest_header).ok_or(StatusCode::BAD_REQUEST)?;
     let _storage_guard = state.storage_lock.lock().await;
     let store = authorized_store(&state, &device_id, &headers)?;
-    let info = store.put_upload_chunk(&upload_id, chunk_index, &body, digest)
+    let info = store
+        .put_upload_chunk(&upload_id, chunk_index, &body, digest)
         .map_err(map_store_error)?;
-    tracing::info!(%device_id, %upload_id, chunk_index, bytes = body.len(), action = "upload_chunk_put");
+    tracing::info!(
+        %device_id,
+        %upload_id,
+        chunk_index,
+        bytes = body.len(),
+        action = "upload_chunk_put"
+    );
     Ok(Json(info).into_response())
 }
 
@@ -548,7 +584,9 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("PUT")
-                    .uri("/v1/devices/00112233445566778899aabbccddeeff/objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+                    .uri(
+                        "/v1/devices/00112233445566778899aabbccddeeff/objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    )
                     .body(Body::from("ciphertext"))
                     .unwrap(),
             )
