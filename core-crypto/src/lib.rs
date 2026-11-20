@@ -7,9 +7,10 @@ mod crypto;
 mod manifest;
 
 pub use crypto::{
-    derive_backup_key, derive_object_id_key, generate_symmetric_key, hash_bytes, open, seal,
-    sign, verify, Argon2idConfig, CiphertextEnvelope, CryptoError, DedupKey, IdentityKeypair,
-    SymmetricKey,
+    create_key_wrapper, derive_backup_key, derive_object_id_key, generate_symmetric_key,
+    hash_bytes, open, seal, sign, unlock_with_passphrase, unlock_with_recovery_code, verify,
+    Argon2idConfig, CiphertextEnvelope, CreatedKeyWrapper, CryptoError, DedupKey,
+    IdentityKeypair, KeyWrapper, RecoveryKit, SymmetricKey,
 };
 pub use manifest::{DataClass, Manifest, ManifestEntry, ManifestError, ObjectId};
 
@@ -77,6 +78,81 @@ mod tests {
         let signature = sign(&identity, b"manifest bytes");
         assert!(verify(&public, b"manifest bytes", &signature).is_ok());
         assert!(verify(&public, b"altered bytes", &signature).is_err());
+    }
+
+
+    #[test]
+    fn key_wrapper_supports_passphrase_and_offline_recovery_after_serialization() {
+        let master = generate_symmetric_key().unwrap();
+        let config = Argon2idConfig {
+            memory_kib: 8192,
+            iterations: 1,
+            parallelism: 1,
+        };
+        let created = create_key_wrapper(
+            &master,
+            [0x42; 16],
+            b"correct horse battery staple",
+            config,
+        )
+        .unwrap();
+
+        let encoded = created.wrapper.encode().unwrap();
+        assert!(!String::from_utf8_lossy(&encoded).contains(created.recovery_kit.recovery_code()));
+        let decoded = KeyWrapper::decode(&encoded).unwrap();
+
+        let passphrase_unlocked =
+            unlock_with_passphrase(&decoded, b"correct horse battery staple").unwrap();
+        let recovery_unlocked = unlock_with_recovery_code(
+            &decoded,
+            created.recovery_kit.recovery_code(),
+        )
+        .unwrap();
+        assert_eq!(master.bytes(), passphrase_unlocked.bytes());
+        assert_eq!(master.bytes(), recovery_unlocked.bytes());
+        assert!(created.recovery_kit.printable_text().contains("Recovery code:"));
+        assert!(created.recovery_kit.printable_text().contains('\n'));
+    }
+
+    #[test]
+    fn recovery_code_checksum_and_wrong_passphrase_are_rejected() {
+        let master = generate_symmetric_key().unwrap();
+        let created = create_key_wrapper(
+            &master,
+            [0x24; 16],
+            b"owner passphrase",
+            Argon2idConfig {
+                memory_kib: 8192,
+                iterations: 1,
+                parallelism: 1,
+            },
+        )
+        .unwrap();
+
+        assert!(unlock_with_passphrase(&created.wrapper, b"wrong passphrase").is_err());
+        let mut damaged = created.recovery_kit.recovery_code().to_owned();
+        damaged.pop();
+        damaged.push('0');
+        assert!(unlock_with_recovery_code(&created.wrapper, &damaged).is_err());
+    }
+
+    #[test]
+    fn key_wrapper_rejects_truncated_and_oversized_encodings() {
+        let master = generate_symmetric_key().unwrap();
+        let created = create_key_wrapper(
+            &master,
+            [0x11; 16],
+            b"passphrase",
+            Argon2idConfig {
+                memory_kib: 8192,
+                iterations: 1,
+                parallelism: 1,
+            },
+        )
+        .unwrap();
+        let encoded = created.wrapper.encode().unwrap();
+        assert!(KeyWrapper::decode(&encoded[..encoded.len() - 1]).is_err());
+        assert!(KeyWrapper::decode(&vec![0u8; 4097]).is_err());
     }
 
     #[test]
