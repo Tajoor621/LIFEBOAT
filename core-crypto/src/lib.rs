@@ -284,7 +284,7 @@ mod tests {
         let expected = [first.clone(), second.clone()].concat();
         let first_id = dedup.identify(&first);
         let second_id = dedup.identify(&second);
-        let chunks = HashMap::from([(first_id, first), (second_id, second)]);
+        let chunks = std::collections::HashMap::from([(first_id, first), (second_id, second)]);
         let manifest = Manifest {
             format_version: 1,
             snapshot_id: [7; 16],
@@ -296,8 +296,8 @@ mod tests {
                     item_id: [9; 16],
                     chunk_index: 0,
                     object_id: first_id,
-                    plaintext_size: 25,
-                    ciphertext_size: 41,
+                    plaintext_size: 24,
+                    ciphertext_size: 40,
                     source_modified_unix_ms: None,
                 },
                 ManifestEntry {
@@ -305,8 +305,8 @@ mod tests {
                     item_id: [9; 16],
                     chunk_index: 1,
                     object_id: second_id,
-                    plaintext_size: 26,
-                    ciphertext_size: 42,
+                    plaintext_size: 25,
+                    ciphertext_size: 41,
                     source_modified_unix_ms: None,
                 },
             ],
