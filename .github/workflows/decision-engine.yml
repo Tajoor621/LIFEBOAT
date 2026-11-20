@@ -1,19 +1,31 @@
-name: P0 decision engine
+name: Rust workspace checks
 
 on:
   push:
     branches: [main]
     paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "decision-engine/**"
+      - "core-crypto/**"
+      - "vault/**"
       - ".github/workflows/decision-engine.yml"
   pull_request:
     paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "decision-engine/**"
+      - "core-crypto/**"
+      - "vault/**"
       - ".github/workflows/decision-engine.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: rust-workspace-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rust:
@@ -24,8 +36,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Format check
-        run: cargo fmt --manifest-path decision-engine/Cargo.toml --all -- --check
-      - name: Unit tests
-        run: cargo test --manifest-path decision-engine/Cargo.toml --all-targets
+        run: cargo fmt --all -- --check
+      - name: Unit and integration tests
+        run: cargo test --workspace --all-targets
       - name: Clippy
-        run: cargo clippy --manifest-path decision-engine/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings

@@ -1,0 +1,20 @@
+[package]
+name = "lifeboat-core-crypto"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0-or-later"
+description = "Client-side cryptographic primitives and encrypted snapshot manifest format for LIFEBOAT"
+
+[dependencies]
+argon2 = "0.6"
+blake3 = "1.8"
+chacha20poly1305 = "0.11"
+ed25519-dalek = "3.0"
+getrandom = "0.3"
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+zeroize = "1.9"
+
+[dev-dependencies]
