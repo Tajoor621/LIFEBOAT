@@ -334,9 +334,8 @@ fn parse_recovery_code(code: &str) -> Result<zeroize::Zeroizing<[u8; KEY_LEN]>, 
 }
 
 impl KeyWrapper {
-    pub fn validate(&self) -> Result<(), CryptoError> {
+    fn validate_structure(&self) -> Result<(), CryptoError> {
         if self.version != WRAPPER_VERSION
-            || self.kdf.validate().is_err()
             || self.passphrase_envelope.version != 1
             || self.recovery_envelope.version != 1
             || self.passphrase_envelope.ciphertext.len() != KEY_LEN + 16
@@ -344,6 +343,12 @@ impl KeyWrapper {
         {
             return Err(CryptoError::WrapperFormat);
         }
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), CryptoError> {
+        self.validate_structure()?;
+        self.kdf.validate()?;
         Ok(())
     }
 
@@ -363,7 +368,7 @@ impl KeyWrapper {
         }
         let wrapper: Self =
             postcard::from_bytes(bytes).map_err(|_| CryptoError::WrapperFormat)?;
-        wrapper.validate()?;
+        wrapper.validate_structure()?;
         Ok(wrapper)
     }
 }
@@ -439,7 +444,9 @@ pub fn unlock_with_recovery_code(
     wrapper: &KeyWrapper,
     recovery_code: &str,
 ) -> Result<SymmetricKey, CryptoError> {
-    wrapper.validate()?;
+    // Recovery-code unlock is independent of the passphrase KDF metadata. A
+    // damaged KDF setting must not disable the offline recovery path.
+    wrapper.validate_structure()?;
     let secret = parse_recovery_code(recovery_code)?;
     let key = SymmetricKey::from_bytes(*secret);
     let plaintext = zeroize::Zeroizing::new(open(
