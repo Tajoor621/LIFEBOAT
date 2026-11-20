@@ -17,12 +17,13 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 
 1. **P0 — Reality and architecture:** platform constraints, truth table, threat model, and ADRs.
 2. **P1 — Core crypto, manifests, and vault:** client-side encryption primitives, versioned manifest encoding, immutable ciphertext storage, and the first authenticated HTTP transport layer.
-3. P2 — Android backup agent and restore.
-4. P3 — Recovery decision engine and evidence-based reports.
-5. P4 — Cloud connectors and export ingestion.
-6. P5 — In-hand rescue workflows.
-7. P6 — Authenticated remote commands and guarded wipe state machine.
-8. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
+3. **P1.5 — Integration and security validation:** cross-layer failure tests, restore integrity checks, API abuse tests, and container build verification. Execution and independent review remain required.
+4. P2 — Android backup agent and restore.
+5. P3 — Recovery decision engine and evidence-based reports.
+6. P4 — Cloud connectors and export ingestion.
+7. P5 — In-hand rescue workflows.
+8. P6 — Authenticated remote commands and guarded wipe state machine.
+9. P7 — Rehydration, restore rehearsal, scheduler, and documentation.
 
 ## Current implementation
 
