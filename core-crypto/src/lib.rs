@@ -276,6 +276,64 @@ mod tests {
     }
 
     #[test]
+    fn restore_rehearsal_assembles_multi_chunk_contact_in_manifest_order() {
+        let master = generate_symmetric_key().unwrap();
+        let dedup = derive_object_id_key(&master);
+        let first = b"BEGIN:VCARD\nVERSION:4.0\n".to_vec();
+        let second = b"FN:Multi Chunk\nEND:VCARD\n".to_vec();
+        let expected = [first.clone(), second.clone()].concat();
+        let first_id = dedup.identify(&first);
+        let second_id = dedup.identify(&second);
+        let chunks = HashMap::from([(first_id, first), (second_id, second)]);
+        let manifest = Manifest {
+            format_version: 1,
+            snapshot_id: [7; 16],
+            device_id: [8; 16],
+            created_at_unix_ms: 5678,
+            entries: vec![
+                ManifestEntry {
+                    data_class: DataClass::Contacts,
+                    item_id: [9; 16],
+                    chunk_index: 0,
+                    object_id: first_id,
+                    plaintext_size: 25,
+                    ciphertext_size: 41,
+                    source_modified_unix_ms: None,
+                },
+                ManifestEntry {
+                    data_class: DataClass::Contacts,
+                    item_id: [9; 16],
+                    chunk_index: 1,
+                    object_id: second_id,
+                    plaintext_size: 26,
+                    ciphertext_size: 42,
+                    source_modified_unix_ms: None,
+                },
+            ],
+        };
+        let scratch = tempfile::tempdir().unwrap();
+        let report = run_restore_rehearsal(
+            &manifest,
+            &dedup,
+            scratch.path(),
+            0,
+            |id| chunks.get(&id).cloned().ok_or(RestoreError::Source("missing chunk".into())),
+            |class, path| {
+                let bytes = fs::read(path).map_err(|error| error.to_string())?;
+                if class == DataClass::Contacts && bytes == expected {
+                    Ok(())
+                } else {
+                    Err("multi-chunk VCF did not reassemble exactly".into())
+                }
+            },
+        )
+        .unwrap();
+        assert_eq!(report.verified_chunks, 2);
+        assert_eq!(report.verified_items, 1);
+        assert!(report.all_contacts_verified);
+    }
+
+    #[test]
     fn restore_rehearsal_rejects_corrupt_plaintext_and_cleans_scratch_files() {
         let master = generate_symmetric_key().unwrap();
         let dedup = derive_object_id_key(&master);
