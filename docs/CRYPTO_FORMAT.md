@@ -37,3 +37,14 @@ The current manifest uses a fixed-schema Postcard encoding with a format version
 The local store accepts lowercase hexadecimal opaque IDs, uses separate object and manifest namespaces, writes to a temporary file and syncs it, then uses create-if-absent hard-link semantics. It refuses overwrites, enforces a configured size limit, and verifies BLAKE3 on reads.
 
 It is not a network server. It does not authenticate callers, authorize devices, enforce quotas/retention, stream large files, or protect against a malicious local administrator. These remain P1 follow-up work.
+
+
+## Vault key wrapper and offline recovery kit (P1.4)
+
+The client-side `KeyWrapper` contains two independent version-1 XChaCha20-Poly1305 envelopes for the same random 256-bit vault master key: one under an Argon2id passphrase-derived key, and one under a random 256-bit offline recovery secret. Both use slot- and vault-ID-bound associated data. The wrapper stores the KDF parameters and random 16-byte salt. The serialized wrapper never contains the recovery secret.
+
+The printable recovery code is `LB1-<64 lowercase hex>-<8 lowercase hex checksum>`. It contains 256 bits of random secret material plus a 4-byte BLAKE3 transcription checksum. It is not a BIP-39 mnemonic. The application must display/export it only in an explicit owner-controlled flow and must never send it to the server or logs. See `docs/RECOVERY_KIT.md`.
+
+## Restore rehearsal
+
+The core restore rehearsal helper validates the manifest, resolves/decrypts all chunks for every contact item and a deterministic sample of other logical items, checks plaintext lengths and keyed object IDs, writes opaque-named scratch files, and requires a caller-supplied parser/validator for each restored item. It is an item-level evidence primitive, not proof of complete backup coverage or a full device restore.
