@@ -59,11 +59,18 @@ mod tests {
             parallelism: 1,
         };
         assert!(derive_backup_key(b"passphrase", &[1u8; 16], config).is_err());
-        assert!(derive_backup_key(b"passphrase", &[1u8; 16], Argon2idConfig {
-            memory_kib: 262_144,
-            iterations: 10,
-            parallelism: 8,
-        }).is_err());
+        assert!(
+            derive_backup_key(
+                b"passphrase",
+                &[1u8; 16],
+                Argon2idConfig {
+                    memory_kib: 262_144,
+                    iterations: 10,
+                    parallelism: 8,
+                },
+            )
+            .is_err()
+        );
         assert!(derive_backup_key(
             &vec![b'x'; 4097],
             &[1u8; 16],
@@ -92,7 +99,6 @@ mod tests {
         assert!(verify(&public, b"manifest bytes", &signature).is_ok());
         assert!(verify(&public, b"altered bytes", &signature).is_err());
     }
-
 
     #[test]
     fn key_wrapper_supports_passphrase_and_offline_recovery_after_serialization() {
@@ -179,7 +185,6 @@ mod tests {
         assert!(KeyWrapper::decode(&vec![0u8; 4097]).is_err());
     }
 
-
     #[test]
     fn restore_rehearsal_restores_all_contacts_and_validates_sampled_items() {
         use std::{collections::HashMap, fs};
@@ -227,7 +232,12 @@ mod tests {
             &dedup,
             scratch.path(),
             1,
-            |id| chunks.get(&id).cloned().ok_or(RestoreError::Source("missing test object".into())),
+            |id| {
+                chunks
+                    .get(&id)
+                    .cloned()
+                    .ok_or(RestoreError::Source("missing test object".into()))
+            },
             |class, path| {
                 let bytes = fs::read(path).map_err(|error| error.to_string())?;
                 match class {
