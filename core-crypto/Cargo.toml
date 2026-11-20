@@ -3,7 +3,7 @@ name = "lifeboat-core-crypto"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-license = "AGPL-3.0-or-later"
+license = "MIT"
 description = "Client-side cryptographic primitives and encrypted snapshot manifest format for LIFEBOAT"
 
 [dependencies]

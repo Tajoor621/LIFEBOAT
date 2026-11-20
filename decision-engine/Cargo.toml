@@ -2,8 +2,8 @@
 name = "lifeboat-decision-engine"
 version = "0.1.0"
 edition = "2021"
-license = "AGPL-3.0-or-later"
-description = "Evidence-based per-data-class recoverability decisions for LIFEBOAT"
+license = "MIT"
+description = "Evidence-based, per-data-class recoverability decisions for LIFEBOAT"
 
 [lib]
 name = "lifeboat_decision_engine"
