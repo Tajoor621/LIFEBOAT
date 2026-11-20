@@ -1,4 +1,4 @@
-# LIFEBOAT Vault API — P1.2
+# LIFEBOAT Vault API — P1.2 / P1.3
 
 This is an early authenticated transport boundary for **already encrypted** objects. It is not a production-ready public Internet service.
 
