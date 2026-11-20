@@ -1,12 +1,21 @@
-use std::{collections::HashMap, env, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    env,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     body::Bytes,
     extract::{DefaultBodyLimit, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
+    middleware::{self, Next},
     routing::{get, put},
     Router,
+    extract::Request,
 };
 use subtle::ConstantTimeEq;
 
@@ -15,12 +24,23 @@ use lifeboat_vault_store::{StoreError, VaultStore};
 const MAX_OBJECT_BYTES: usize = 16 * 1024 * 1024 + 16;
 const MAX_MANIFEST_BYTES: usize = 8 * 1024 * 1024;
 const MAX_STORED_BYTES: u64 = MAX_OBJECT_BYTES as u64;
+const MAX_DEVICE_STORAGE_BYTES: u64 = 50 * 1024 * 1024 * 1024;
+const RATE_WINDOW: Duration = Duration::from_secs(60);
+const MAX_REQUESTS_PER_WINDOW: u32 = 120;
+
+#[derive(Default)]
+struct RateWindow {
+    started: Option<Instant>,
+    requests: u32,
+}
 
 #[derive(Clone)]
 struct AppState {
     root: PathBuf,
     // Only keyed hashes are retained in memory; raw bearer tokens are never logged or stored.
     device_token_hashes: Arc<HashMap<String, [u8; 32]>>,
+    rate_limits: Arc<tokio::sync::Mutex<HashMap<String, RateWindow>>>,
+    storage_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[tokio::main]
@@ -51,6 +71,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState {
         root,
         device_token_hashes: Arc::new(device_token_hashes),
+        rate_limits: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        storage_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
 
     let app = Router::new()
@@ -63,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/devices/{device_id}/manifests/{snapshot_id}",
             put(put_manifest).get(get_manifest),
         )
+        .route_layer(middleware::from_fn_with_state(state.clone(), authenticate_request))
         .layer(DefaultBodyLimit::max(MAX_OBJECT_BYTES))
         .with_state(state);
 
@@ -74,6 +97,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
     Ok(())
+}
+
+
+async fn authenticate_request(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    if path == "/healthz" {
+        return next.run(request).await;
+    }
+
+    let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    if segments.len() != 5 || segments[0] != "v1" || segments[1] != "devices" {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let device_id = segments[2];
+    if !valid_hex_id(device_id, 32)
+        || !matches!(segments[3], "objects" | "manifests" | "uploads")
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let Some(token) = token else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Some(expected) = state.device_token_hashes.get(device_id) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let actual = blake3::hash(token.as_bytes());
+    if expected.ct_eq(actual.as_bytes()).unwrap_u8() != 1 {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    let mut limits = state.rate_limits.lock().await;
+    let window = limits.entry(device_id.to_owned()).or_default();
+    let now = Instant::now();
+    if window.started.is_none_or(|started| now.duration_since(started) >= RATE_WINDOW) {
+        window.started = Some(now);
+        window.requests = 0;
+    }
+    if window.requests >= MAX_REQUESTS_PER_WINDOW {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    window.requests += 1;
+    drop(limits);
+
+    next.run(request).await
 }
 
 async fn health() -> &'static str {
@@ -138,7 +215,12 @@ async fn put_object(
     if body.len() > MAX_OBJECT_BYTES {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
+    let _storage_guard = state.storage_lock.lock().await;
     let store = authorized_store(&state, &device_id, &headers)?;
+    let current_usage = store.total_bytes().map_err(map_store_error)?;
+    if current_usage.saturating_add(body.len() as u64) > MAX_DEVICE_STORAGE_BYTES {
+        return Err(StatusCode::INSUFFICIENT_STORAGE);
+    }
     let digest = store
         .put_object(&object_id, &body)
         .map_err(map_store_error)?;
@@ -175,7 +257,12 @@ async fn put_manifest(
     if body.len() > MAX_MANIFEST_BYTES {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
+    let _storage_guard = state.storage_lock.lock().await;
     let store = authorized_store(&state, &device_id, &headers)?;
+    let current_usage = store.total_bytes().map_err(map_store_error)?;
+    if current_usage.saturating_add(body.len() as u64) > MAX_DEVICE_STORAGE_BYTES {
+        return Err(StatusCode::INSUFFICIENT_STORAGE);
+    }
     let digest = store
         .put_manifest(&snapshot_id, &body)
         .map_err(map_store_error)?;
@@ -295,6 +382,8 @@ mod tests {
                 "00112233445566778899aabbccddeeff".to_owned(),
                 *blake3::hash(token.as_bytes()).as_bytes(),
             )])),
+            rate_limits: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            storage_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
