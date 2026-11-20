@@ -13,11 +13,12 @@ A backup is not recoverable if the only device-held key is lost. A single passph
 2. Store two independent XChaCha20-Poly1305 wraps of that master key:
    - Argon2id-derived passphrase key, with a random 16-byte salt and persisted KDF parameters.
    - Independent random 256-bit recovery secret, represented by a versioned printable code with a 4-byte BLAKE3 transcription checksum.
-3. Bind each envelope's AAD to the protocol version, vault ID, and distinct wrapping slot.
-4. Never transmit the passphrase, recovery secret, or plaintext master key to the vault server.
-5. The recovery code is a high-entropy hexadecimal code, not a BIP-39 mnemonic. QR/PDF presentation is a later UI concern and must not invent a mnemonic vocabulary.
-6. Restore rehearsal must decrypt selected chunks, verify manifest plaintext sizes and keyed object IDs, write restored logical items into an isolated scratch directory, and require caller-supplied format-aware parsers before reporting success.
-7. Every contact item is included in a rehearsal; a deterministic configurable sample of non-contact items is included. The report is explicitly item-level evidence, not proof of complete snapshot coverage or a full device restore.
+3. Bound untrusted Argon2id parameters to 8–128 MiB, 1–6 iterations, and 1–4 lanes; cap passphrases at 4 KiB.
+4. Bind each envelope's AAD to the protocol version, vault ID, and distinct wrapping slot.
+5. Never transmit the passphrase, recovery secret, or plaintext master key to the vault server.
+6. The recovery code is a high-entropy hexadecimal code, not a BIP-39 mnemonic. QR/PDF presentation is a later UI concern and must not invent a mnemonic vocabulary.
+7. Restore rehearsal must decrypt selected chunks, verify manifest plaintext sizes and keyed object IDs, write restored logical items into an isolated scratch directory, and require caller-supplied format-aware parsers before reporting success.
+8. Every contact item is included in a rehearsal; a deterministic configurable sample of non-contact items is included. The report is explicitly item-level evidence, not proof of complete snapshot coverage or a full device restore.
 
 ## Consequences
 
