@@ -37,6 +37,7 @@ The core `RecoveryKit` deliberately has no Debug or serialization implementation
 
 - Every logical contact item in the manifest is selected.
 - The requested number of other logical items is selected deterministically.
+- The implementation bounds the rehearsal to 100,000 logical items, 512 MiB per item, and 2 GiB total restored bytes.
 - All chunks for each selected item must be present in canonical contiguous order.
 - The resolver must decrypt each object. Plaintext length and keyed object ID are verified against the manifest.
 - Restored items are written under opaque generated filenames in the scratch directory and synced.
