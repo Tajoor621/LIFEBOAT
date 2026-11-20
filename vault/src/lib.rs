@@ -95,7 +95,7 @@ impl VaultStore {
             return Err(StoreError::TooLarge);
         }
         let chunk_count = total_size.div_ceil(chunk_size as u64) as usize;
-        if chunk_count > 256 {
+        if chunk_count > 257 {
             return Err(StoreError::TooLarge);
         }
         let mut random = [0u8; 16];
@@ -314,7 +314,7 @@ impl VaultStore {
         if session.total_size == 0
             || session.total_size > self.max_object_bytes
             || !(64 * 1024..=1024 * 1024).contains(&session.chunk_size)
-            || expected_chunks > 256
+            || expected_chunks > 257
             || session.chunks.len() != expected_chunks as usize
             || validate_id(&session.object_id, 64).is_err()
         {
