@@ -4,6 +4,7 @@ plugins {
 }
 
 android {
+    // Stable app identity: package ID follows the LIFEBOAT product name.
     namespace = "com.tajoor621.lifeboat"
     compileSdk = 35
     compileOptions {
@@ -19,13 +20,20 @@ android {
         applicationId = "com.tajoor621.lifeboat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "0.2.2-p2-contacts"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
-        debug { applicationIdSuffix = ".debug"; versionNameSuffix = "-debug" }
-        release { isMinifyEnabled = false }
+        // Keep the debug package ID identical to the app's stable application ID.
+        // CI's default debug certificate is for testing only; production signing
+        // must use a protected, persistent keystore supplied through CI secrets.
+        debug {
+            isDebuggable = true
+        }
+        release {
+            isMinifyEnabled = false
+        }
     }
     lint { abortOnError = true; checkReleaseBuilds = true }
 }
