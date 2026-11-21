@@ -15,8 +15,7 @@ Open the newest successful run on `main`, then download the
 90 days. The workflow uploads only after unit tests, lint, APK assembly,
 and the least-privilege manifest check all pass.
 
-This is a debug/test build, not a production-signed release. Verify the
-checksum before installing. A successful CI build does not replace physical
+The debug APK uses the stable package ID `com.tajoor621.lifeboat` (matching the LIFEBOAT app identity). CI now checks the package ID and APK signature before publishing. It is still signed with the runner's debug key, not a persistent production key; do not rely on it for seamless upgrades across different CI runs. Verify the checksum before installing. A successful CI build does not replace physical
 device acceptance testing.
 
 
