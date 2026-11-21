@@ -33,7 +33,7 @@ jobs:
           assert m["name"].startswith("LIFEBOAT") and m["short_name"] == "LIFEBOAT"
           assert m["start_url"] == "/LIFEBOAT/" and m["scope"] == "/LIFEBOAT/"
           assert m["display"] == "standalone"
-          for icon in m["icons"]: assert Path(icon["src"].lstrip("/")).is_file(), icon["src"]
+          for icon in m["icons"]: assert Path(icon["src"].replace("/LIFEBOAT/", "", 1)).is_file(), icon["src"]
           for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
               assert Path(p).is_file() and Path(p).stat().st_size > 0, p
           html = Path("index.html").read_text()
