@@ -59,11 +59,11 @@ jobs:
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          aapt dump badging "$APK" | grep -F "package: name='com.tajoor621.lifeboat' versionCode='2'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.tajoor621.lifeboat' versionCode='2'"
           aapt dump badging "$APK" | grep -F "sdkVersion:'26'"
           aapt dump badging "$APK" | grep -F "targetSdkVersion:'35'"
-          zipalign -c -v 4 "$APK"
-          apksigner verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
       - name: Install and launch APK on Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
