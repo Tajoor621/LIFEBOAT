@@ -24,30 +24,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate PWA manifest and shell
+      - name: Validate manifest, raster icons and offline shell
         run: |
           python3 - <<'PY'
-          import json
+          import json, struct
           from pathlib import Path
           m = json.loads(Path("manifest.webmanifest").read_text())
           assert m["name"].startswith("LIFEBOAT") and m["short_name"] == "LIFEBOAT"
-          assert m["start_url"] == "/LIFEBOAT/" and m["scope"] == "/LIFEBOAT/"
-          assert m["display"] == "standalone"
-          for icon in m["icons"]: assert Path(icon["src"].replace("/LIFEBOAT/", "", 1)).is_file(), icon["src"]
+          assert m["id"] == "/LIFEBOAT/" and m["start_url"] == "/LIFEBOAT/" and m["scope"] == "/LIFEBOAT/"
+          assert m["display"] == "standalone" and "standalone" in m["display_override"]
+          assert m["lang"] == "en" and m["dir"] == "ltr"
+          assert m["prefer_related_applications"] is False
+          for icon in m["icons"]:
+              p = Path(icon["src"].replace("/LIFEBOAT/", "", 1))
+              assert p.is_file(), f"Missing icon: {p}"
+              if icon["type"] == "image/png":
+                  data = p.read_bytes()
+                  assert data[:8] == b"\\x89PNG\\r\\n\\x1a\\n", f"Invalid PNG: {p}"
+                  w, h = struct.unpack(">II", data[16:24])
+                  assert f"{w}x{h}" == icon["sizes"], f"Incorrect size for {p}: {w}x{h}"
+          assert any(i.get("sizes") == "192x192" and i["type"] == "image/png" for i in m["icons"])
+          assert any(i.get("sizes") == "512x512" and i["type"] == "image/png" for i in m["icons"])
           for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
               assert Path(p).is_file() and Path(p).stat().st_size > 0, p
           html = Path("index.html").read_text()
-          assert 'rel="manifest"' in html and "service-worker.js" in html
+          assert 'lang="en"' in html and 'rel="manifest"' in html and "service-worker.js" in html
           sw = Path("service-worker.js").read_text().lower()
+          assert "lifeboat-icon-192.png" in sw and "lifeboat-icon-512.png" in sw
           assert "vcf" not in sw and "contacts" not in sw
-          print("LIFEBOAT PWA manifest, shell and privacy boundary verified.")
+          print("LIFEBOAT PWA manifest, raster icons, shell and privacy boundary verified.")
           PY
       - name: Assemble Pages artifact
         run: |
           rm -rf _site
           mkdir -p _site/assets/branding
           cp index.html offline.html manifest.webmanifest service-worker.js pwa.css pwa.js _site/
-          cp assets/branding/lifeboat-mark.svg assets/branding/lifeboat-pwa-icon.svg _site/assets/branding/
+          cp assets/branding/lifeboat-mark.svg assets/branding/lifeboat-pwa-icon.svg assets/branding/lifeboat-icon-192.png assets/branding/lifeboat-icon-512.png assets/branding/lifeboat-favicon-32.png assets/branding/lifeboat-apple-touch-icon-180.png _site/assets/branding/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

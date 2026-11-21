@@ -1,7 +1,7 @@
 /* LIFEBOAT static-shell worker. No private data or API caching. */
 "use strict";
 const CACHE_PREFIX = "lifeboat-shell-";
-const CACHE_NAME = CACHE_PREFIX + "v1.0.0";
+const CACHE_NAME = CACHE_PREFIX + "v1.1.0";
 const BASE = new URL("/LIFEBOAT/", self.location.origin);
 const SHELL = [
   new URL("index.html", BASE).href,
@@ -10,7 +10,11 @@ const SHELL = [
   new URL("pwa.js", BASE).href,
   new URL("manifest.webmanifest", BASE).href,
   new URL("assets/branding/lifeboat-mark.svg", BASE).href,
-  new URL("assets/branding/lifeboat-pwa-icon.svg", BASE).href
+  new URL("assets/branding/lifeboat-pwa-icon.svg", BASE).href,
+  new URL("assets/branding/lifeboat-icon-192.png", BASE).href,
+  new URL("assets/branding/lifeboat-icon-512.png", BASE).href,
+  new URL("assets/branding/lifeboat-favicon-32.png", BASE).href,
+  new URL("assets/branding/lifeboat-apple-touch-icon-180.png", BASE).href
 ];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -25,7 +29,6 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith("/LIFEBOAT/")) return;
-  // Only known shell files are cached. All other paths are network-only.
   if (SHELL.includes(url.href)) {
     event.respondWith(caches.match(request).then(cached => cached || fetch(request)));
     return;
