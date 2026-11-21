@@ -40,13 +40,15 @@ jobs:
               assert p.is_file(), f"Missing icon: {p}"
               if icon["type"] == "image/png":
                   data = p.read_bytes()
-                  assert data[:8] == b"\\x89PNG\\r\\n\\x1a\\n", f"Invalid PNG: {p}"
+                  assert data[:8] == b"\x89PNG\r\n\x1a\n", f"Invalid PNG: {p}"
                   w, h = struct.unpack(">II", data[16:24])
                   assert f"{w}x{h}" == icon["sizes"], f"Incorrect size for {p}: {w}x{h}"
           assert any(i.get("sizes") == "192x192" and i["type"] == "image/png" for i in m["icons"])
           assert any(i.get("sizes") == "512x512" and i["type"] == "image/png" for i in m["icons"])
           for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
               assert Path(p).is_file() and Path(p).stat().st_size > 0, p
+          for p in ["assets/branding/lifeboat-favicon-32.png","assets/branding/lifeboat-apple-touch-icon-180.png"]:
+              assert Path(p).is_file() and Path(p).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", p
           html = Path("index.html").read_text()
           assert 'lang="en"' in html and 'rel="manifest"' in html and "service-worker.js" in html
           sw = Path("service-worker.js").read_text().lower()
