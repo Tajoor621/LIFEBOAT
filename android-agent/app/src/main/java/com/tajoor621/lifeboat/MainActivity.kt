@@ -98,12 +98,12 @@ class MainActivity : Activity() {
     }
 
     private fun beginContactsExport() {
-        val consent = SnapshotConsent(
-            preferences.getBoolean(KEY_CONFIRMED, false),
-            DataClass.values().filter { preferences.getBoolean(keyFor(it), false) }.toSet()
-        )
-        if (!consent.hasExplicitScope() || DataClass.CONTACTS !in consent.selectedClasses) {
-            status.text = "Save explicit Contacts consent before starting a contacts export."
+        val selectedNow = choices.filterValues { it.isChecked }.keys
+        val savedSelected = DataClass.values().filter { preferences.getBoolean(keyFor(it), false) }.toSet()
+        val savedConfirmed = preferences.getBoolean(KEY_CONFIRMED, false)
+        if (!confirmation.isChecked || !savedConfirmed || selectedNow != savedSelected ||
+            DataClass.CONTACTS !in selectedNow) {
+            status.text = "Your current choices differ from saved consent. Confirm the selection, then press Save consent choices before exporting."
             return
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {

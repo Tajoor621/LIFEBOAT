@@ -28,4 +28,14 @@ class VCardWriterTest {
         VCardWriter.writeContact(output, VCardContact())
         assertTrue(output.toString().contains("FN:Unnamed contact\r\n"))
     }
+
+    @Test fun foldsLongUnicodeLinesWithoutSplittingUtf8Characters() {
+        val output = StringWriter()
+        val longName = "نور".repeat(80)
+        VCardWriter.writeContact(output, VCardContact(formattedName = longName))
+        val physicalLines = output.toString().split("\r\n").filter(String::isNotEmpty)
+        assertTrue(physicalLines.all { it.toByteArray(Charsets.UTF_8).size <= 75 })
+        val unfolded = physicalLines.joinToString("\n") { it.removePrefix(" ") }
+        assertTrue(unfolded.contains("FN:$longName"))
+    }
 }

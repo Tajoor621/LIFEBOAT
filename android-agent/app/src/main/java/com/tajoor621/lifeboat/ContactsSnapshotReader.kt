@@ -85,8 +85,9 @@ class ContactsSnapshotReader(private val context: Context) {
                             when (rows.getString(1)) {
                                 ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE -> {
                                     formatted = rows.getString(2).orEmpty()
-                                    family = rows.getString(3).orEmpty()
-                                    given = rows.getString(4).orEmpty()
+                                    // DATA2 is given name; DATA3 is family name.
+                                    given = rows.getString(3).orEmpty()
+                                    family = rows.getString(4).orEmpty()
                                 }
                                 ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE ->
                                     rows.getString(2)?.takeIf(String::isNotBlank)?.let(phones::add)
