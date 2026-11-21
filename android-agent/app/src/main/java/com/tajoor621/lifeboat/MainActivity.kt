@@ -65,8 +65,8 @@ class MainActivity : Activity() {
             textSize = 15f; setPadding(0, 0, 0, 18)
         })
         addChoice(page, DataClass.CONTACTS, "Contacts", "Read-only contacts export to a location you choose.")
-        addChoice(page, DataClass.PHOTOS, "Photos", "Not implemented in this build.")
-        addChoice(page, DataClass.VIDEOS, "Videos", "Not implemented in this build.")
+        addChoice(page, DataClass.PHOTOS, "Photos", "P2.3 metadata inventory only; no media content is copied.")
+        addChoice(page, DataClass.VIDEOS, "Videos", "P2.3 metadata inventory only; no media content is copied.")
         addChoice(page, DataClass.DOCUMENTS, "Documents", "Not implemented in this build.")
         confirmation = CheckBox(this).apply {
             text = "I understand these categories and explicitly approve saving my choices."

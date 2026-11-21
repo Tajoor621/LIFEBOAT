@@ -32,7 +32,8 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 5. **P2.0 — Android Sentinel foundation:** permission-free Android shell, explicit-consent model, permission matrix, validation plan, and Android CI.
 6. **P2.1 — Onboarding and consent:** saved owner-selected categories and withdrawal.
 7. **P2.2 — Contacts snapshot:** owner-initiated read-only Contacts Provider query, VCF 4.0 export, and local evidence; no upload.
-8. **P2.3–P2.6 — Android backup agent:** media inventory, client-side encryption, resumable upload, and restore rehearsal.
+8. **P2.3 — Media inventory:** owner-selected read-only MediaStore metadata inventory with Android 8–14+ permission handling; no media content copied or uploaded.
+9. **P2.4–P2.6 — Android backup agent:** client-side encryption, resumable upload, and restore rehearsal.
 9. P3 — Recovery decision engine and evidence-based reports.
 10. P4 — Cloud connectors and export ingestion.
 11. P5 — In-hand rescue workflows.
@@ -43,7 +44,7 @@ LIFEBOAT helps people preserve data before device loss, assess what is genuinely
 - `decision-engine/`: four-state evidence-based recoverability evaluator.
 - `core-crypto/`: XChaCha20-Poly1305 envelopes, Argon2id key derivation, dual passphrase/recovery-code vault-key wrapping, keyed BLAKE3 object identifiers, Ed25519 signing/strict verification, versioned snapshot manifests, and a scratch restore-rehearsal verifier.
 - `vault/`: local immutable ciphertext storage plus an Axum HTTP API with pre-body per-device bearer authentication, route-level body limits, versioned active/previous token digests, per-device rate/storage limits, immutable object and manifest writes, digest-verified reads, and persistent resumable chunk uploads.
-- `android-agent/`: Kotlin Android app (minSdk 26, targetSdk 35). P2.1 provides explicit saved consent; P2.2 adds a separately initiated read-only Contacts export to VCF 4.0. The only declared Android permission is `READ_CONTACTS`; no network permission or background collection component is present.
+- `android-agent/`: Kotlin Android app (minSdk 26, targetSdk 35). P2.1 provides explicit saved consent; P2.2 adds a separately initiated read-only Contacts export to VCF 4.0. Android permissions are limited to READ_CONTACTS plus legacy (maxSdk 32) and granular visual-media read permissions for the separately consented P2.3 metadata inventory; no network permission or background collection component is present.
 - PWA root files: installable static LIFEBOAT shell, manifest, versioned service worker, offline fallback, browser install prompt and GitHub Pages deployment workflow. Offline cache is limited to public shell assets.
 - `docs/PWA_INSTALL_AND_OFFLINE.md`: PWA scope, offline behavior and signing boundaries.
 - `docs/P2_ANDROID_SENTINEL_ARCHITECTURE.md`, `docs/P2_PERMISSION_MATRIX.md`, `docs/P2_VALIDATION_PLAN.md`, and `docs/P2.2_CONTACTS_SNAPSHOT.md`: Android design, permission boundaries and validation requirements.

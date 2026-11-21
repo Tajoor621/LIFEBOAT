@@ -48,18 +48,20 @@ jobs:
           root = ET.parse("android-agent/app/src/main/AndroidManifest.xml").getroot()
           android = "{http://schemas.android.com/apk/res/android}"
           permissions = {node.get(android + "name") for node in root if node.tag == "uses-permission"}
-          assert permissions == {"android.permission.READ_CONTACTS"}, permissions
+          assert permissions == {"android.permission.READ_CONTACTS", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"}, permissions
           assert not any(node.tag in {"uses-permission-sdk-23", "uses-feature"} for node in root)
           app = root.find("application")
           assert app is not None
           assert not any(node.tag in {"service", "receiver", "provider"} for node in app)
-          print("P2.2 manifest boundary verified: READ_CONTACTS only")
+          external = next(node for node in root if node.tag == "uses-permission" and node.get(android + "name") == "android.permission.READ_EXTERNAL_STORAGE")
+          assert external.get(android + "maxSdkVersion") == "32"
+          print("P2.3 manifest boundary verified: contacts + scoped media permissions only")
           PY
       - name: Verify APK package, SDK range, alignment and signature
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.tajoor621.lifeboat' versionCode='2'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.tajoor621.lifeboat' versionCode='3'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "sdkVersion:'26'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "targetSdkVersion:'35'"
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
@@ -74,6 +76,7 @@ jobs:
           script: |
             adb install -r android-agent/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n com.tajoor621.lifeboat/.MainActivity
+            sleep 3
             adb shell pidof com.tajoor621.lifeboat
       - name: Prepare verified APK checksum
         run: |
