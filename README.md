@@ -4,6 +4,22 @@
 
 # LIFEBOAT
 
+## Android APK downloads
+
+The latest verified Android debug APK is published by the **Android Sentinel checks** workflow:
+[Open the latest successful Android workflow](https://github.com/Tajoor621/LIFEBOAT/actions/workflows/android-agent.yml).
+
+Open the newest successful run on `main`, then download the
+`lifeboat-sentinel-debug-<commit-sha>` artifact. It contains
+`app-debug.apk` and `app-debug.apk.sha256`. Artifacts are retained for
+90 days. The workflow uploads only after unit tests, lint, APK assembly,
+and the least-privilege manifest check all pass.
+
+This is a debug/test build, not a production-signed release. Verify the
+checksum before installing. A successful CI build does not replace physical
+device acceptance testing.
+
+
 **Honest, owner-controlled device backup, recovery, and loss response.**
 
 LIFEBOAT helps people preserve data before device loss, assess what is genuinely recoverable, restore verified backups, and respond safely when a device is lost.
