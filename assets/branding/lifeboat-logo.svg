@@ -1,20 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1160" role="img" aria-labelledby="title desc">
 <title id="title">LIFEBOAT — Backup, Recover, Be Ready</title><desc id="desc">A protected smartphone and rescue ring inside a shield above a lifeboat and waves.</desc>
-<defs>
- <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#061b3b"/><stop offset="1" stop-color="#020c20"/></linearGradient>
- <linearGradient id="metal" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".48" stop-color="#9db9d9"/><stop offset="1" stop-color="#eaf5ff"/></linearGradient>
- <linearGradient id="blue" x2="1" y2="1"><stop stop-color="#19d8ff"/><stop offset=".55" stop-color="#087bdc"/><stop offset="1" stop-color="#0644a5"/></linearGradient>
-</defs>
-<rect width="1000" height="1000" rx="90" fill="url(#bg)"/>
-<path d="M500 75 835 205v280c0 190-130 330-335 420C295 815 165 675 165 485V205Z" fill="#06234a" stroke="url(#metal)" stroke-width="25"/>
-<path d="M500 112 800 229v250c0 160-108 287-300 376-192-89-300-216-300-376V229Z" fill="none" stroke="#078ee8" stroke-width="7"/>
-<rect x="385" y="215" width="230" height="390" rx="42" fill="#04152f" stroke="url(#blue)" stroke-width="16"/>
-<rect x="405" y="242" width="190" height="330" rx="22" fill="#092c56"/>
-<path d="M475 228h50" stroke="#bfeeff" stroke-width="8" stroke-linecap="round"/>
-<circle cx="500" cy="405" r="91" fill="none" stroke="#f4f8ff" stroke-width="34"/>
-<path d="m435 342 28 28m74-28-28 28m-74 72 28-28m74 28-28-28" stroke="#09254a" stroke-width="20" stroke-linecap="round"/>
-<path d="M250 625q125 55 250 0 125 55 250 0l-50 90H300Z" fill="url(#metal)" stroke="#d9f1ff" stroke-width="8"/>
-<path d="M220 720q140-65 280 0t280 0" fill="none" stroke="#17cfff" stroke-width="28" stroke-linecap="round"/>
-<path d="M250 775q125-52 250 0t250 0" fill="none" stroke="#0876d6" stroke-width="20" stroke-linecap="round"/>
-<path d="M160 500q100 55 190 0M650 500q90 55 190 0" fill="none" stroke="#20caff" stroke-width="12" stroke-linecap="round"/>
+<defs><linearGradient id="bg" x2="0" y2="1"><stop stop-color="#061b3b"/><stop offset="1" stop-color="#020c20"/></linearGradient><linearGradient id="metal" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".48" stop-color="#9db9d9"/><stop offset="1" stop-color="#eaf5ff"/></linearGradient><linearGradient id="blue" x2="1" y2="1"><stop stop-color="#19d8ff"/><stop offset=".55" stop-color="#087bdc"/><stop offset="1" stop-color="#0644a5"/></linearGradient></defs>
+<rect width="1000" height="1160" rx="90" fill="url(#bg)"/>
+<g transform="translate(0 0)"><path d="M500 65 835 195v280c0 190-130 330-335 420C295 805 165 665 165 475V195Z" fill="#06234a" stroke="url(#metal)" stroke-width="25"/><path d="M500 102 800 219v250c0 160-108 287-300 376-192-89-300-216-300-376V219Z" fill="none" stroke="#078ee8" stroke-width="7"/><rect x="385" y="205" width="230" height="390" rx="42" fill="#04152f" stroke="url(#blue)" stroke-width="16"/><rect x="405" y="232" width="190" height="330" rx="22" fill="#092c56"/><path d="M475 218h50" stroke="#bfeeff" stroke-width="8" stroke-linecap="round"/><circle cx="500" cy="395" r="91" fill="none" stroke="#f4f8ff" stroke-width="34"/><path d="m435 332 28 28m74-28-28 28m-74 72 28-28m74 28-28-28" stroke="#09254a" stroke-width="20" stroke-linecap="round"/><path d="M250 615q125 55 250 0 125 55 250 0l-50 90H300Z" fill="url(#metal)" stroke="#d9f1ff" stroke-width="8"/><path d="M220 710q140-65 280 0t280 0" fill="none" stroke="#17cfff" stroke-width="28" stroke-linecap="round"/><path d="M250 765q125-52 250 0t250 0" fill="none" stroke="#0876d6" stroke-width="20" stroke-linecap="round"/></g>
+<text x="500" y="965" fill="#f4f8ff" font-family="Arial,Helvetica,sans-serif" font-size="112" font-weight="800" letter-spacing="4" text-anchor="middle">LIFE<tspan fill="#18bdf2">BOAT</tspan></text>
+<text x="500" y="1035" fill="#dcecff" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="600" letter-spacing="9" text-anchor="middle">BACKUP  •  RECOVER  •  BE READY</text>
 </svg>
