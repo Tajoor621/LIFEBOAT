@@ -21,6 +21,7 @@ Artifacts section and install it only on an owner-controlled test device.
 - Empty address book, 50k contacts, duplicate numbers, Unicode names, organizations, multiple accounts, and provider cursor behavior.
 - Deny permission; deny twice; revoke in Settings; grant after denial; verify no query without a current grant.
 - Revoke permission while a large query is running; snapshot must fail and remove its incomplete staging file.
+- Press Stop during provider scanning, destination copy, and destination verification; confirm no export is marked complete, staging is removed, and partial destination deletion is attempted.
 - Force-stop/restart during export; no incomplete artifact may be marked complete.
 - Export through Android document picker; compare destination SHA-256 and byte count with the in-app evidence.
 - Verify the VCF in two independent contact importers; test multiline, comma, semicolon, backslash, and Unicode values.
@@ -36,4 +37,4 @@ Artifacts section and install it only on an owner-controlled test device.
 
 ## Release blockers
 
-Any permission overreach, unannounced collection, manifest mismatch, plaintext upload, false yes/no status, missing stop control, or unverified restore blocks release.
+Any permission overreach, unannounced collection, manifest mismatch, plaintext upload, false yes/no status, broken cancellation/cleanup, or unverified restore blocks release.
