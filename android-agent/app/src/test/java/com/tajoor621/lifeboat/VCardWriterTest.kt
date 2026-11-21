@@ -35,7 +35,15 @@ class VCardWriterTest {
         VCardWriter.writeContact(output, VCardContact(formattedName = longName))
         val physicalLines = output.toString().split("\r\n").filter(String::isNotEmpty)
         assertTrue(physicalLines.all { it.toByteArray(Charsets.UTF_8).size <= 75 })
-        val unfolded = physicalLines.joinToString("\n") { it.removePrefix(" ") }
+        val unfolded = buildString {
+            physicalLines.forEach { line ->
+                if (line.startsWith(" ")) append(line.drop(1))
+                else {
+                    if (isNotEmpty()) append('\n')
+                    append(line)
+                }
+            }
+        }
         assertTrue(unfolded.contains("FN:$longName"))
     }
 }
