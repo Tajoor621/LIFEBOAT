@@ -10,6 +10,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class ContactsSnapshotEvidence(
     val startedAtEpochMs: Long,
@@ -23,7 +24,7 @@ data class ContactsSnapshotEvidence(
 )
 
 class ContactsSnapshotReader(private val context: Context) {
-    fun createVcf(destination: File): ContactsSnapshotEvidence {
+    fun createVcf(destination: File, cancelRequested: AtomicBoolean = AtomicBoolean(false)): ContactsSnapshotEvidence {
         requireContactsPermission()
         val started = System.currentTimeMillis()
         val resolver = context.contentResolver
@@ -73,6 +74,7 @@ class ContactsSnapshotReader(private val context: Context) {
                         }
 
                         while (rows.moveToNext()) {
+                            check(!cancelRequested.get()) { "Contacts export stopped by owner" }
                             requireContactsPermission()
                             counts[1]++
                             val id = rows.getString(0) ?: continue
@@ -115,6 +117,7 @@ class ContactsSnapshotReader(private val context: Context) {
             destination.inputStream().buffered().use { input ->
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
+                    check(!cancelRequested.get()) { "Contacts export stopped by owner" }
                     val read = input.read(buffer)
                     if (read < 0) break
                     digest.update(buffer, 0, read)

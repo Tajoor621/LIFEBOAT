@@ -3,6 +3,7 @@ package com.tajoor621.lifeboat
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.provider.DocumentsContract
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -18,14 +19,17 @@ import androidx.core.content.ContextCompat
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Visible, owner-initiated contacts export. No background collection or network access. */
 class MainActivity : Activity() {
     private val preferences by lazy { getSharedPreferences("sentinel_consent_v1", MODE_PRIVATE) }
     private val executor = Executors.newSingleThreadExecutor()
+    private val cancelRequested = AtomicBoolean(false)
     private val choices = linkedMapOf<DataClass, CheckBox>()
     private lateinit var confirmation: CheckBox
     private lateinit var status: TextView
+    private lateinit var cancelButton: Button
     private var pendingVcf: File? = null
     private var pendingEvidence: ContactsSnapshotEvidence? = null
     private var askedContactsBefore = false
@@ -76,6 +80,12 @@ class MainActivity : Activity() {
         page.addView(Button(this).apply {
             text = "Withdraw consent and clear choices"; setOnClickListener { withdrawConsent() }
         }, matchWidth())
+        cancelButton = Button(this).apply {
+            text = "Stop current export"
+            isEnabled = false
+            setOnClickListener { cancelExport() }
+        }
+        page.addView(cancelButton, matchWidth())
         status = TextView(this).apply { textSize = 13f; setPadding(0, 18, 0, 0) }
         page.addView(status)
         refreshStatus()
@@ -109,6 +119,8 @@ class MainActivity : Activity() {
     }
 
     private fun withdrawConsent() {
+        cancelRequested.set(true)
+        cancelButton.isEnabled = false
         preferences.edit().clear().apply()
         choices.values.forEach { it.isChecked = false }
         confirmation.isChecked = false
@@ -126,6 +138,8 @@ class MainActivity : Activity() {
             status.text = "Your current choices differ from saved consent. Confirm the selection, then press Save consent choices before exporting."
             return
         }
+        cancelRequested.set(false)
+        cancelButton.isEnabled = true
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
             createContactsSnapshot()
             return
@@ -144,17 +158,29 @@ class MainActivity : Activity() {
         } else {
             val state = if (askedContactsBefore && !shouldShowRequestPermissionRationale(Manifest.permission.READ_CONTACTS))
                 "PERMANENTLY_DENIED" else "DENIED"
+            cancelButton.isEnabled = false
             status.text = "Contacts permission: $state. No contacts were read."
         }
     }
 
     private fun createContactsSnapshot() {
-        status.text = "Reading contacts with your permission. This may take time for a large address book."
+        cancelRequested.set(false)
+        cancelButton.isEnabled = true
+        status.text = "Reading contacts with your permission. You can stop this export at any time."
         executor.execute {
             val file = File(cacheDir, "lifeboat-contacts-${System.currentTimeMillis()}.vcf")
             try {
-                val evidence = ContactsSnapshotReader(this).createVcf(file)
+                val evidence = ContactsSnapshotReader(this).createVcf(file, cancelRequested)
+                if (cancelRequested.get() || isFinishing || isDestroyed) {
+                    file.delete()
+                    return@execute
+                }
                 runOnUiThread {
+                    if (isFinishing || isDestroyed || cancelRequested.get()) {
+                        file.delete()
+                        cancelButton.isEnabled = false
+                        return@runOnUiThread
+                    }
                     pendingVcf = file
                     pendingEvidence = evidence
                     status.text = "Snapshot ready: ${evidence.exportedContactCount} vCards from ${evidence.providerContactCount} provider contacts; ${evidence.outputBytes} bytes. Choose where to save the VCF."
@@ -166,7 +192,11 @@ class MainActivity : Activity() {
                 }
             } catch (failure: Exception) {
                 file.delete()
-                runOnUiThread { status.text = "Contacts snapshot failed: ${failure.message ?: "provider or permission error"}. No partial export was kept." }
+                if (!isFinishing && !isDestroyed) runOnUiThread {
+                    cancelButton.isEnabled = false
+                    status.text = if (cancelRequested.get()) "Export stopped. Temporary contacts data was deleted."
+                    else "Contacts snapshot failed: ${failure.message ?: "provider or permission error"}. No partial export was kept."
+                }
             }
         }
     }
@@ -179,8 +209,9 @@ class MainActivity : Activity() {
         val snapshot = pendingEvidence
         pendingVcf = null; pendingEvidence = null
         val uri: Uri? = if (resultCode == RESULT_OK) data?.data else null
-        if (source == null || snapshot == null || uri == null) {
+        if (source == null || snapshot == null || uri == null || cancelRequested.get()) {
             source?.delete()
+            cancelButton.isEnabled = false
             status.text = "Export cancelled. Temporary contacts data was deleted."
             return
         }
@@ -188,7 +219,16 @@ class MainActivity : Activity() {
             try {
                 val output = contentResolver.openOutputStream(uri) ?: error("Could not open selected destination")
                 source.inputStream().buffered().use { input ->
-                    output.buffered().use { target -> input.copyTo(target) }
+                    output.buffered().use { target ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            check(!cancelRequested.get()) { "Export stopped by owner" }
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            target.write(buffer, 0, count)
+                        }
+                        target.flush()
+                    }
                 }
                 val destinationDigest = MessageDigest.getInstance("SHA-256")
                 var destinationBytes = 0L
@@ -196,6 +236,7 @@ class MainActivity : Activity() {
                 copied.buffered().use { input ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
+                        check(!cancelRequested.get()) { "Export stopped by owner" }
                         val count = input.read(buffer)
                         if (count < 0) break
                         destinationDigest.update(buffer, 0, count)
@@ -210,14 +251,29 @@ class MainActivity : Activity() {
                 val json = """{"startedAtEpochMs":${snapshot.startedAtEpochMs},"completedAtEpochMs":${snapshot.completedAtEpochMs},"providerContactCount":${snapshot.providerContactCount},"exportedContactCount":${snapshot.exportedContactCount},"dataRowsRead":${snapshot.dataRowsRead},"outputBytes":${snapshot.outputBytes},"sha256":"${snapshot.sha256}","completion":"EXPORTED_VERIFIED"}"""
                 evidenceFile.writeText(json, Charsets.UTF_8)
                 source.delete()
-                runOnUiThread {
+                if (!isFinishing && !isDestroyed) runOnUiThread {
+                    cancelButton.isEnabled = false
                     status.text = "VCF export saved. Provider contacts: ${snapshot.providerContactCount}; exported cards: ${snapshot.exportedContactCount}; bytes: ${snapshot.outputBytes}. Private evidence and SHA-256 saved."
                 }
             } catch (failure: Exception) {
                 source.delete()
-                runOnUiThread { status.text = "Could not save the selected VCF destination: ${failure.message ?: "write error"}. Temporary data deleted." }
+                try { DocumentsContract.deleteDocument(contentResolver, uri) } catch (_: Exception) { /* Provider may not support deletion. */ }
+                if (!isFinishing && !isDestroyed) runOnUiThread {
+                    cancelButton.isEnabled = false
+                    status.text = if (cancelRequested.get()) "Export stopped. Temporary data was deleted; destination cleanup was attempted."
+                    else "Could not save the selected VCF destination: ${failure.message ?: "write error"}. Temporary data deleted."
+                }
             }
         }
+    }
+
+    private fun cancelExport() {
+        cancelRequested.set(true)
+        pendingVcf?.delete()
+        pendingVcf = null
+        pendingEvidence = null
+        cancelButton.isEnabled = false
+        status.text = "Stop requested. The current operation will stop at its next safe checkpoint."
     }
 
     private fun refreshStatus() {
@@ -234,7 +290,10 @@ class MainActivity : Activity() {
     private fun matchWidth() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
     override fun onDestroy() {
-        executor.shutdown()
+        cancelRequested.set(true)
+        pendingVcf?.delete()
+        pendingVcf = null
+        executor.shutdownNow()
         super.onDestroy()
     }
 
