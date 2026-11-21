@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -32,7 +33,26 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(28, 32, 28, 32) }
-        page.addView(TextView(this).apply { text = "LIFEBOAT Sentinel"; textSize = 26f })
+        page.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_lifeboat_mark)
+            contentDescription = "LIFEBOAT shield and rescue mark"
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams(112, 112).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL }
+        })
+        page.addView(TextView(this).apply {
+            text = "LIFEBOAT"
+            textSize = 28f
+            setTextColor(android.graphics.Color.rgb(16, 105, 190))
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(0, 4, 0, 0)
+        })
+        page.addView(TextView(this).apply {
+            text = "BACKUP  •  RECOVER  •  BE READY"
+            textSize = 11f
+            letterSpacing = 0.12f
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 18)
+        })
         page.addView(TextView(this).apply {
             text = "Your data stays under your control"; textSize = 17f; setPadding(0, 8, 0, 20)
         })

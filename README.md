@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/lifeboat-logo.svg" alt="LIFEBOAT — Backup, Recover, Be Ready" width="560">
+</p>
+
 # LIFEBOAT
 
 **Honest, owner-controlled device backup, recovery, and loss response.**
