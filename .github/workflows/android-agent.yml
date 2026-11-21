@@ -56,6 +56,13 @@ jobs:
           assert not any(node.tag in forbidden_components for node in app), "Unexpected background component"
           print("P2.2 manifest boundary verified: READ_CONTACTS only")
           PY
+      - name: Verify APK package identity and Android signature
+        run: |
+          APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          aapt dump badging "$APK" | grep -F "package: name='com.tajoor621.lifeboat' versionCode='2'"
+          apksigner verify --verbose --print-certs "$APK"
+          echo "APK package ID and v1/v2/v3 signature verification passed."
       - name: Prepare verified APK checksum
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
