@@ -8,6 +8,14 @@
 - Manifest validation allows only `READ_CONTACTS` in P2.2; no network permission, services, receivers, providers, device-admin, accessibility, or notification-listener components.
 - Fresh-install defaults, permission request timing, saved scope, withdrawal, and local export are manually reviewed.
 
+## P2.2 build artifact
+
+After unit tests, lint, APK assembly, and manifest checks pass, CI uploads
+`app-debug.apk` as a 14-day workflow artifact named
+`lifeboat-sentinel-debug-<commit-sha>`. This is a debug/test build, not a
+production-signed release. Download it from the successful Android workflow's
+Artifacts section and install it only on an owner-controlled test device.
+
 ## P2.2 device validation required
 
 - Empty address book, 50k contacts, duplicate numbers, Unicode names, organizations, multiple accounts, and provider cursor behavior.
