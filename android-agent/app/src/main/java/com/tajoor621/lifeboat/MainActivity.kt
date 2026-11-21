@@ -164,7 +164,6 @@ class MainActivity : Activity() {
     }
 
     private fun createContactsSnapshot() {
-        cancelRequested.set(false)
         cancelButton.isEnabled = true
         status.text = "Reading contacts with your permission. You can stop this export at any time."
         executor.execute {
