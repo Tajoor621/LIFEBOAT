@@ -9,28 +9,31 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import java.util.concurrent.atomic.AtomicBoolean
 
-data class MediaInventoryEvidence(val imageCount: Int, val videoCount: Int, val totalBytes: Long, val scope: String)
+data class MediaInventoryEvidence(val imageCount: Int, val videoCount: Int, val totalBytes: Long, val imageScope: String, val videoScope: String, val scope: String)
 
 /** Read-only metadata inventory. Never opens media content or persists names, paths or URIs. */
 class MediaStoreInventoryReader(private val context: Context) {
     fun inventory(includeImages: Boolean, includeVideos: Boolean, cancelled: AtomicBoolean = AtomicBoolean(false)): MediaInventoryEvidence {
         require(includeImages || includeVideos) { "No media category was selected" }
-        val imageAccess = includeImages && hasAccess(DataClass.PHOTOS)
-        val videoAccess = includeVideos && hasAccess(DataClass.VIDEOS)
-        check(imageAccess || videoAccess) { "No selected media permission is currently granted" }
-        val image = if (imageAccess) count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cancelled) else 0L to 0
-        val video = if (videoAccess) count(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cancelled) else 0L to 0
-        val full = mutableListOf<Boolean>()
-        if (includeImages) full.add(isFullAccess(DataClass.PHOTOS))
-        if (includeVideos) full.add(isFullAccess(DataClass.VIDEOS))
-        return MediaInventoryEvidence(image.second, video.second, image.first + video.first, if (full.all { it }) "FULL" else "PARTIAL")
+        val imageScope = if (includeImages) accessScope(DataClass.PHOTOS) else "NOT_SELECTED"
+        val videoScope = if (includeVideos) accessScope(DataClass.VIDEOS) else "NOT_SELECTED"
+        check(imageScope != "NONE" || videoScope != "NONE") { "No selected media permission is currently granted" }
+        val image = if (imageScope == "FULL" || imageScope == "PARTIAL") count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cancelled) else 0L to 0
+        val video = if (videoScope == "FULL" || videoScope == "PARTIAL") count(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cancelled) else 0L to 0
+        val selectedScopes = listOf(imageScope, videoScope).filter { it != "NOT_SELECTED" }
+        val overall = if (selectedScopes.all { it == "FULL" }) "FULL" else "PARTIAL"
+        return MediaInventoryEvidence(image.second, video.second, image.first + video.first, imageScope, videoScope, overall)
     }
     private fun hasAccess(dataClass: DataClass): Boolean =
         ContextCompat.checkSelfPermission(context, permissionFor(dataClass)) == PackageManager.PERMISSION_GRANTED ||
             (Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED)
-    private fun isFullAccess(dataClass: DataClass): Boolean {
-        if (Build.VERSION.SDK_INT < 33) return ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        return ContextCompat.checkSelfPermission(context, permissionFor(dataClass)) == PackageManager.PERMISSION_GRANTED
+    private fun accessScope(dataClass: DataClass): String {
+        if (Build.VERSION.SDK_INT < 33) {
+            return if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) "FULL" else "NONE"
+        }
+        if (ContextCompat.checkSelfPermission(context, permissionFor(dataClass)) == PackageManager.PERMISSION_GRANTED) return "FULL"
+        if (Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED) return "PARTIAL"
+        return "NONE"
     }
     private fun permissionFor(dataClass: DataClass): String = when {
         Build.VERSION.SDK_INT >= 33 && dataClass == DataClass.PHOTOS -> Manifest.permission.READ_MEDIA_IMAGES
