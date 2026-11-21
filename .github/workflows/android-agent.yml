@@ -1,5 +1,4 @@
 name: Android Sentinel checks
-
 on:
   push:
     branches: [main]
@@ -8,15 +7,17 @@ on:
       - "docs/P2_*.md"
       - ".github/workflows/android-agent.yml"
       - "README.md"
+      - "index.html"
+      - "manifest.webmanifest"
+      - "service-worker.js"
+      - "pwa.css"
+      - "pwa.js"
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: android-agent-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -48,36 +49,47 @@ jobs:
           android = "{http://schemas.android.com/apk/res/android}"
           permissions = {node.get(android + "name") for node in root if node.tag == "uses-permission"}
           assert permissions == {"android.permission.READ_CONTACTS"}, permissions
-          forbidden = {"uses-permission-sdk-23", "uses-feature"}
-          assert not any(node.tag in forbidden for node in root), "Unexpected manifest capability"
+          assert not any(node.tag in {"uses-permission-sdk-23", "uses-feature"} for node in root)
           app = root.find("application")
           assert app is not None
-          forbidden_components = {"service", "receiver", "provider"}
-          assert not any(node.tag in forbidden_components for node in app), "Unexpected background component"
+          assert not any(node.tag in {"service", "receiver", "provider"} for node in app)
           print("P2.2 manifest boundary verified: READ_CONTACTS only")
           PY
-      - name: Verify APK package identity and Android signature
+      - name: Verify APK package, SDK range, alignment and signature
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           aapt dump badging "$APK" | grep -F "package: name='com.tajoor621.lifeboat' versionCode='2'"
+          aapt dump badging "$APK" | grep -F "sdkVersion:'26'"
+          aapt dump badging "$APK" | grep -F "targetSdkVersion:'35'"
+          zipalign -c -v 4 "$APK"
           apksigner verify --verbose --print-certs "$APK"
-          echo "APK package ID and v1/v2/v3 signature verification passed."
+      - name: Install and launch APK on Android 15 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: |
+            adb install -r android-agent/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n com.tajoor621.lifeboat/.MainActivity
+            adb shell pidof com.tajoor621.lifeboat
       - name: Prepare verified APK checksum
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
           sha256sum "$APK" | tee android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
           {
             echo "## LIFEBOAT Android debug APK"
             echo ""
             echo "- Commit: `$GITHUB_SHA`"
-            echo "- APK: `app-debug.apk`"
+            echo "- Package: `com.tajoor621.lifeboat`"
             echo "- SHA-256:"
             echo "```"
             cat android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
             echo "```"
-            echo "- This is a debug/test APK, not a production-signed release."
+            echo "- Android emulator install and launch: passed."
+            echo "- Debug/test build, not a production-signed release."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload verified debug APK and checksum
         uses: actions/upload-artifact@v4

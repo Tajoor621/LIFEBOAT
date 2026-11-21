@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#081226">
+  <meta name="description" content="LIFEBOAT — owner-controlled backup, recovery and loss response.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/LIFEBOAT/manifest.webmanifest">
+  <link rel="icon" href="/LIFEBOAT/assets/branding/lifeboat-pwa-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/LIFEBOAT/assets/branding/lifeboat-pwa-icon.svg">
+  <link rel="stylesheet" href="/LIFEBOAT/pwa.css">
+  <title>LIFEBOAT — Backup • Recover • Be Ready</title>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <img src="/LIFEBOAT/assets/branding/lifeboat-mark.svg" alt="" width="48" height="48">
+      <div><p class="eyebrow">OWNER-CONTROLLED RESILIENCE</p><strong>LIFEBOAT</strong></div>
+      <span id="network" class="status" role="status">Checking connection…</span>
+    </header>
+    <section class="hero">
+      <p class="eyebrow">BACKUP • RECOVER • BE READY</p>
+      <h1>Your data.<br><span>Your control.</span></h1>
+      <p class="lead">Prepare before device loss. Understand what is genuinely recoverable. Restore only from verified backups.</p>
+      <div class="actions">
+        <button id="install" class="primary" type="button" hidden>Install LIFEBOAT</button>
+        <a class="secondary" href="https://github.com/Tajoor621/LIFEBOAT/actions/workflows/android-agent.yml">Android APK builds ↗</a>
+      </div>
+    </section>
+    <section class="grid" aria-label="LIFEBOAT principles">
+      <article><span class="number">01</span><h2>Owner consent</h2><p>Collection is visible, explicitly authorized and limited to permissions you grant.</p></article>
+      <article><span class="number">02</span><h2>Honest recovery</h2><p>No invented scans or promises. Recovery depends on what was backed up and can be verified.</p></article>
+      <article><span class="number">03</span><h2>Privacy first</h2><p>This web shell stores only its static interface for offline access. It does not collect contacts or backup data.</p></article>
+    </section>
+    <section class="notice">
+      <h2>Know the limits</h2>
+      <p>If a device is lost and no independent backup exists, local-only data may be unrecoverable. LIFEBOAT does not bypass locks, encryption, account security, FRP, Activation Lock or device management.</p>
+    </section>
+    <footer><span>© LIFEBOAT</span><span id="app-version">Web shell · v1.0.0</span><a href="https://github.com/Tajoor621/LIFEBOAT">Source & documentation ↗</a></footer>
+  </main>
+  <script src="/LIFEBOAT/pwa.js" defer></script>
+  <script>if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/LIFEBOAT/service-worker.js", {scope:"/LIFEBOAT/"}).catch(() => {}));</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+name: Deploy LIFEBOAT PWA
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "offline.html"
+      - "manifest.webmanifest"
+      - "service-worker.js"
+      - "pwa.css"
+      - "pwa.js"
+      - "assets/branding/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: lifeboat-pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PWA manifest and shell
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m = json.loads(Path("manifest.webmanifest").read_text())
+          assert m["name"].startswith("LIFEBOAT") and m["short_name"] == "LIFEBOAT"
+          assert m["start_url"] == "/LIFEBOAT/" and m["scope"] == "/LIFEBOAT/"
+          assert m["display"] == "standalone"
+          for icon in m["icons"]: assert Path(icon["src"].lstrip("/")).is_file(), icon["src"]
+          for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
+              assert Path(p).is_file() and Path(p).stat().st_size > 0, p
+          html = Path("index.html").read_text()
+          assert 'rel="manifest"' in html and "service-worker.js" in html
+          sw = Path("service-worker.js").read_text().lower()
+          assert "vcf" not in sw and "contacts" not in sw
+          print("LIFEBOAT PWA manifest, shell and privacy boundary verified.")
+          PY
+      - name: Assemble Pages artifact
+        run: |
+          rm -rf _site
+          mkdir -p _site/assets/branding
+          cp index.html offline.html manifest.webmanifest service-worker.js pwa.css pwa.js _site/
+          cp assets/branding/lifeboat-mark.svg assets/branding/lifeboat-pwa-icon.svg _site/assets/branding/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
