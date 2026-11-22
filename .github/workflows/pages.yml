@@ -92,11 +92,14 @@ jobs:
               return dimensions
           for icon in m["icons"]:
               path = Path(icon["src"].replace("/LIFEBOAT/", "", 1))
-              dims = png_info(path)
-              declared = icon["sizes"]
-              if declared != "any":
+              assert path.is_file(), f"Missing icon: {path}"
+              if icon["type"] == "image/png":
+                  dims = png_info(path)
+                  declared = icon["sizes"]
                   w,h = map(int, declared.split("x"))
                   assert dims == (w,h), f"{path}: declared {declared}, actual {dims}"
+              else:
+                  assert icon["type"] == "image/svg+xml" and icon["sizes"] == "any"
           for shot in m.get("screenshots", []):
               path = Path(shot["src"].replace("/LIFEBOAT/", "", 1))
               dims = png_info(path)
