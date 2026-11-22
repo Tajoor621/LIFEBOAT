@@ -14,6 +14,9 @@
   "theme_color": "#081226",
   "categories": ["utilities", "productivity", "security"],
   "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": ["focus-existing", "navigate-existing"]
+  },
   "icons": [
     {
       "src": "/LIFEBOAT/assets/branding/lifeboat-icon-192.png",
@@ -28,10 +31,60 @@
       "purpose": "any"
     },
     {
+      "src": "/LIFEBOAT/assets/branding/lifeboat-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/LIFEBOAT/assets/branding/lifeboat-pwa-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/LIFEBOAT/screenshots/lifeboat-mobile.png",
+      "sizes": "540x960",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "LIFEBOAT mobile home screen"
+    },
+    {
+      "src": "/LIFEBOAT/screenshots/lifeboat-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "LIFEBOAT desktop home screen"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Prepare recovery",
+      "short_name": "Prepare",
+      "description": "Review owner-controlled recovery preparation guidance.",
+      "url": "/LIFEBOAT/#prepare",
+      "icons": [
+        {
+          "src": "/LIFEBOAT/assets/branding/lifeboat-shortcut-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Safety and limits",
+      "short_name": "Safety",
+      "description": "Review LIFEBOAT privacy boundaries and recovery limitations.",
+      "url": "/LIFEBOAT/#safety",
+      "icons": [
+        {
+          "src": "/LIFEBOAT/assets/branding/lifeboat-shortcut-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

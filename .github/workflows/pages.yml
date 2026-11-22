@@ -9,6 +9,7 @@ on:
       - "service-worker.js"
       - "pwa.css"
       - "pwa.js"
+      - "screenshots/**"
       - "assets/branding/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -24,44 +25,103 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate manifest, raster icons and offline shell
+      - name: Generate clean PWA icons and screenshots
+        run: |
+          python3 -m pip install --disable-pip-version-check pillow cairosvg
+          python3 - <<'PY'
+          from pathlib import Path
+          import cairosvg
+          from PIL import Image
+          import io
+          root = Path(".")
+          branding = root / "assets/branding"
+          source = (branding / "lifeboat-pwa-icon.svg").read_bytes()
+          sizes = {
+              "lifeboat-icon-192.png": 192,
+              "lifeboat-icon-512.png": 512,
+              "lifeboat-apple-touch-icon-180.png": 180,
+              "lifeboat-favicon-32.png": 32,
+              "lifeboat-shortcut-96.png": 96,
+          }
+          for name, size in sizes.items():
+              data = cairosvg.svg2png(bytestring=source, output_width=size, output_height=size)
+              image = Image.open(io.BytesIO(data)).convert("RGBA")
+              image.save(branding / name, format="PNG", optimize=True)
+          size = 512
+          data = cairosvg.svg2png(bytestring=source, output_width=size, output_height=size)
+          artwork = Image.open(io.BytesIO(data)).convert("RGBA").resize((388,388), Image.Resampling.LANCZOS)
+          maskable = Image.new("RGBA", (size,size), (8,18,38,255))
+          maskable.alpha_composite(artwork, (62,62))
+          maskable.save(branding / "lifeboat-icon-maskable-512.png", format="PNG", optimize=True)
+          out = root / "screenshots"
+          out.mkdir(exist_ok=True)
+          for stem in ("lifeboat-mobile", "lifeboat-desktop"):
+              svg = out / (stem + ".svg")
+              png = out / (stem + ".png")
+              cairosvg.svg2png(url=str(svg), write_to=str(png))
+          print("Generated all LIFEBOAT PWA raster assets.")
+          PY
+      - name: Validate manifest, PNG CRCs, dimensions, shortcuts and offline shell
         run: |
           python3 - <<'PY'
-          import json, struct
+          import json, struct, zlib
           from pathlib import Path
           m = json.loads(Path("manifest.webmanifest").read_text())
           assert m["name"].startswith("LIFEBOAT") and m["short_name"] == "LIFEBOAT"
           assert m["id"] == "/LIFEBOAT/" and m["start_url"] == "/LIFEBOAT/" and m["scope"] == "/LIFEBOAT/"
           assert m["display"] == "standalone" and "standalone" in m["display_override"]
-          assert m["lang"] == "en" and m["dir"] == "ltr"
-          assert m["prefer_related_applications"] is False
+          assert m["lang"] == "en" and m["dir"] == "ltr" and m["prefer_related_applications"] is False
+          def png_info(path):
+              data = Path(path).read_bytes()
+              assert data[:8] == b"\\x89PNG\\r\\n\\x1a\\n", f"Invalid PNG signature: {path}"
+              pos, idat, seen_end = 8, bytearray(), False
+              dimensions = None
+              while pos < len(data):
+                  length = struct.unpack(">I", data[pos:pos+4])[0]
+                  kind = data[pos+4:pos+8]
+                  chunk = data[pos+4:pos+8+length]
+                  crc = struct.unpack(">I", data[pos+8+length:pos+12+length])[0]
+                  assert zlib.crc32(chunk) & 0xffffffff == crc, f"CRC error in {path} ({kind!r})"
+                  payload = data[pos+8:pos+8+length]
+                  if kind == b"IHDR": dimensions = struct.unpack(">II", payload[:8])
+                  if kind == b"IDAT": idat.extend(payload)
+                  if kind == b"IEND": seen_end = True; pos += 12 + length; break
+                  pos += 12 + length
+              assert seen_end and pos == len(data), f"Invalid PNG termination: {path}"
+              zlib.decompress(bytes(idat))
+              return dimensions
           for icon in m["icons"]:
-              p = Path(icon["src"].replace("/LIFEBOAT/", "", 1))
-              assert p.is_file(), f"Missing icon: {p}"
-              if icon["type"] == "image/png":
-                  data = p.read_bytes()
-                  assert data[:8] == b"\x89PNG\r\n\x1a\n", f"Invalid PNG: {p}"
-                  w, h = struct.unpack(">II", data[16:24])
-                  assert f"{w}x{h}" == icon["sizes"], f"Incorrect size for {p}: {w}x{h}"
-          assert any(i.get("sizes") == "192x192" and i["type"] == "image/png" for i in m["icons"])
-          assert any(i.get("sizes") == "512x512" and i["type"] == "image/png" for i in m["icons"])
+              path = Path(icon["src"].replace("/LIFEBOAT/", "", 1))
+              dims = png_info(path)
+              declared = icon["sizes"]
+              if declared != "any":
+                  w,h = map(int, declared.split("x"))
+                  assert dims == (w,h), f"{path}: declared {declared}, actual {dims}"
+          for shot in m.get("screenshots", []):
+              path = Path(shot["src"].replace("/LIFEBOAT/", "", 1))
+              dims = png_info(path)
+              w,h = map(int, shot["sizes"].split("x"))
+              assert dims == (w,h), f"Screenshot size mismatch: {path} {dims}"
+          for shortcut in m.get("shortcuts", []):
+              assert shortcut["url"].startswith("/LIFEBOAT/#")
+              assert shortcut["icons"] and png_info(shortcut["icons"][0]["src"].replace("/LIFEBOAT/", "", 1)) == (96,96)
           for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
               assert Path(p).is_file() and Path(p).stat().st_size > 0, p
-          for p in ["assets/branding/lifeboat-favicon-32.png","assets/branding/lifeboat-apple-touch-icon-180.png"]:
-              assert Path(p).is_file() and Path(p).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", p
           html = Path("index.html").read_text()
           assert 'lang="en"' in html and 'rel="manifest"' in html and "service-worker.js" in html
+          assert 'id="prepare"' in html and 'id="safety"' in html
           sw = Path("service-worker.js").read_text().lower()
-          assert "lifeboat-icon-192.png" in sw and "lifeboat-icon-512.png" in sw
-          assert "vcf" not in sw and "contacts" not in sw
-          print("LIFEBOAT PWA manifest, raster icons, shell and privacy boundary verified.")
+          assert "lifeboat-icon-maskable-512.png" in sw and "lifeboat-mobile.png" in sw
+          assert "contacts" not in sw and "vcf" not in sw
+          print("PASS: PNG signatures, every chunk CRC, IDAT decompression, dimensions, screenshots, shortcuts and PWA shell.")
           PY
       - name: Assemble Pages artifact
         run: |
           rm -rf _site
-          mkdir -p _site/assets/branding
+          mkdir -p _site/assets/branding _site/screenshots
           cp index.html offline.html manifest.webmanifest service-worker.js pwa.css pwa.js _site/
-          cp assets/branding/lifeboat-mark.svg assets/branding/lifeboat-pwa-icon.svg assets/branding/lifeboat-icon-192.png assets/branding/lifeboat-icon-512.png assets/branding/lifeboat-favicon-32.png assets/branding/lifeboat-apple-touch-icon-180.png _site/assets/branding/
+          cp assets/branding/lifeboat-mark.svg assets/branding/lifeboat-pwa-icon.svg assets/branding/lifeboat-icon-192.png assets/branding/lifeboat-icon-512.png assets/branding/lifeboat-icon-maskable-512.png assets/branding/lifeboat-shortcut-96.png assets/branding/lifeboat-favicon-32.png assets/branding/lifeboat-apple-touch-icon-180.png _site/assets/branding/
+          cp screenshots/lifeboat-mobile.png screenshots/lifeboat-desktop.png _site/screenshots/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

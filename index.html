@@ -30,7 +30,7 @@
       <h1>Your data.<br><span>Your control.</span></h1>
       <p class="lead">Prepare before device loss. Understand what is genuinely recoverable. Restore only from verified backups.</p>
       <div class="actions">
-        <button id="install" class="primary" type="button" hidden>Install LIFEBOAT</button>
+        <a class="primary" href="#prepare">Prepare your recovery plan</a>
         <a class="secondary" href="https://github.com/Tajoor621/LIFEBOAT/actions/workflows/android-agent.yml">Android APK builds ↗</a>
       </div>
     </section>
@@ -39,13 +39,26 @@
       <article><span class="number">02</span><h2>Honest recovery</h2><p>No invented scans or promises. Recovery depends on what was backed up and can be verified.</p></article>
       <article><span class="number">03</span><h2>Privacy first</h2><p>This web shell stores only its static interface for offline access. It does not collect contacts or backup data.</p></article>
     </section>
-    <section class="notice">
-      <h2>Know the limits</h2>
-      <p>If a device is lost and no independent backup exists, local-only data may be unrecoverable. LIFEBOAT does not bypass locks, encryption, account security, FRP, Activation Lock or device management.</p>
+    <section class="notice" id="prepare">
+      <h2>Prepare before device loss</h2>
+      <p>Keep independent copies of important information, protect account recovery methods, and verify that backups can actually be opened. LIFEBOAT features are limited to the sources and permissions currently implemented in the Android app.</p>
     </section>
-    <footer><span>© LIFEBOAT</span><span id="app-version">Web shell · v1.1.0</span><a href="https://github.com/Tajoor621/LIFEBOAT">Source & documentation ↗</a></footer>
+    <section class="notice" id="safety">
+      <h2>Know the limits</h2>
+      <p>If a device is lost and no independent backup exists, local-only data may be unrecoverable. LIFEBOAT does not bypass locks, encryption, account security, FRP, Activation Lock or device management. The web shell does not upload or collect personal backup data.</p>
+    </section>
+    <footer><span>© LIFEBOAT</span><span id="app-version">Web shell · v1.2.0</span><a href="https://github.com/Tajoor621/LIFEBOAT">Source & documentation ↗</a></footer>
   </main>
   <script src="/LIFEBOAT/pwa.js" defer></script>
-  <script>if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/LIFEBOAT/service-worker.js", {scope:"/LIFEBOAT/"}).catch(() => {}));</script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/LIFEBOAT/service-worker.js", {
+          scope: "/LIFEBOAT/",
+          updateViaCache: "none"
+        }).catch(error => console.error("LIFEBOAT offline support could not be registered.", error));
+      });
+    }
+  </script>
 </body>
 </html>
