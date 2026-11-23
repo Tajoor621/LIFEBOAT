@@ -107,7 +107,7 @@ jobs:
               assert dims == (w,h), f"Screenshot size mismatch: {path} {dims}"
           for shortcut in m.get("shortcuts", []):
               assert shortcut["url"].startswith("/LIFEBOAT/#")
-              assert shortcut["icons"] and png_info(shortcut["icons"][0]["src"].replace("/LIFEBOAT/", "", 1)) == (96,96)
+              assert shortcut["icons"] and Path(shortcut["icons"][0]["src"].replace("/LIFEBOAT/", "", 1)).is_file() and shortcut["icons"][0]["type"] == "image/svg+xml"
           for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
               assert Path(p).is_file() and Path(p).stat().st_size > 0, p
           html = Path("index.html").read_text()
