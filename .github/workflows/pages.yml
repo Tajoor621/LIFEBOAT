@@ -107,7 +107,16 @@ jobs:
               assert dims == (w,h), f"Screenshot size mismatch: {path} {dims}"
           for shortcut in m.get("shortcuts", []):
               assert shortcut["url"].startswith("/LIFEBOAT/#")
-              assert shortcut["icons"] and Path(shortcut["icons"][0]["src"].replace("/LIFEBOAT/", "", 1)).is_file() and shortcut["icons"][0]["type"] == "image/svg+xml"
+              assert shortcut["icons"], "Shortcut icon is required"
+              for icon in shortcut["icons"]:
+                  path = Path(icon["src"].replace("/LIFEBOAT/", "", 1))
+                  assert icon["type"] == "image/png" and path.is_file(), f"Missing PNG shortcut icon: {path}"
+                  w,h = map(int, icon["sizes"].split("x"))
+                  assert png_info(path) == (w,h), f"Shortcut icon size mismatch: {path}"
+          required_icons = {("192x192", "any"), ("512x512", "any")}
+          declared_icons = {(icon["sizes"], icon["purpose"]) for icon in m["icons"]}
+          assert required_icons.issubset(declared_icons), "192 and 512 PNG any-purpose icons are required"
+          assert any(icon["sizes"] == "512x512" and icon["purpose"] == "maskable" and icon["type"] == "image/png" for icon in m["icons"]), "512px maskable PNG is required"
           for p in ["index.html","offline.html","service-worker.js","pwa.css","pwa.js"]:
               assert Path(p).is_file() and Path(p).stat().st_size > 0, p
           html = Path("index.html").read_text()
