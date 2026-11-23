@@ -69,6 +69,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
       - name: Install and launch APK on Android 15 emulator
+        id: emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -103,7 +104,7 @@ jobs:
             echo "```"
             cat android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
             echo "```"
-            if [ "${{ steps.*.outcome }}" = "success" ]; then echo "- Android emulator install and launch: passed."; else echo "- Android emulator install and launch: see job result; artifact is a build-verified debug APK only."; fi
+            if [ "${{ steps.emulator.outcome }}" = "success" ]; then echo "- Android emulator install and launch: passed."; else echo "- Android emulator install and launch: see job result; artifact is a build-verified debug APK only."; fi
             echo "- Debug/test build, not a production-signed release."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload build-verified debug APK and checksum
