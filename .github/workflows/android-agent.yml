@@ -21,6 +21,7 @@ concurrency:
 jobs:
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -58,6 +59,7 @@ jobs:
           print("P2.3 manifest boundary verified: contacts + scoped media permissions only")
           PY
       - name: Verify APK package, SDK range, alignment and signature
+        id: verify_apk
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
@@ -73,12 +75,22 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
           script: |
             adb install -r android-agent/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n com.tajoor621.lifeboat/.MainActivity
             sleep 3
             adb shell pidof com.tajoor621.lifeboat
-      - name: Prepare verified APK checksum
+      - name: Capture emulator diagnostics on failure
+        if: failure()
+        run: |
+          adb devices -l || true
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
+          find "${ANDROID_AVD_HOME:-$HOME/.android/avd}" -maxdepth 2 -type f -name '*.log' -print -exec tail -n 120 {} \; 2>/dev/null || true
+      - name: Prepare APK checksum
+        if: always() && steps.verify_apk.outcome == 'success'
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           sha256sum "$APK" | tee android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -91,10 +103,11 @@ jobs:
             echo "```"
             cat android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
             echo "```"
-            echo "- Android emulator install and launch: passed."
+            if [ "${{ steps.*.outcome }}" = "success" ]; then echo "- Android emulator install and launch: passed."; else echo "- Android emulator install and launch: see job result; artifact is a build-verified debug APK only."; fi
             echo "- Debug/test build, not a production-signed release."
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload verified debug APK and checksum
+      - name: Upload build-verified debug APK and checksum
+        if: always() && steps.verify_apk.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: lifeboat-sentinel-debug-${{ github.sha }}
