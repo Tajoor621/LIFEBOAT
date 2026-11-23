@@ -19,9 +19,10 @@ concurrency:
   group: android-agent-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  android:
+  build:
+    name: Build, test and publish debug APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -39,7 +40,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Verify Android Sentinel
+      - name: Run unit tests, lint and assemble APK
         working-directory: android-agent
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
       - name: Verify least-privilege manifest
@@ -59,7 +60,6 @@ jobs:
           print("P2.3 manifest boundary verified: contacts + scoped media permissions only")
           PY
       - name: Verify APK package, SDK range, alignment and signature
-        id: verify_apk
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
@@ -68,30 +68,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "targetSdkVersion:'35'"
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-      - name: Install and launch APK on Android 15 emulator
-        id: emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: |
-            adb install -r android-agent/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -n com.tajoor621.lifeboat/.MainActivity
-            sleep 3
-            adb shell pidof com.tajoor621.lifeboat
-      - name: Capture emulator diagnostics on failure
-        if: failure()
-        run: |
-          adb devices -l || true
-          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
-          find "${ANDROID_AVD_HOME:-$HOME/.android/avd}" -maxdepth 2 -type f -name '*.log' -print -exec tail -n 120 {} \; 2>/dev/null || true
-      - name: Prepare APK checksum
-        if: always() && steps.verify_apk.outcome == 'success'
+      - name: Prepare APK checksum and build summary
         run: |
           APK="android-agent/app/build/outputs/apk/debug/app-debug.apk"
           sha256sum "$APK" | tee android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -104,11 +81,11 @@ jobs:
             echo "```"
             cat android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
             echo "```"
-            if [ "${{ steps.emulator.outcome }}" = "success" ]; then echo "- Android emulator install and launch: passed."; else echo "- Android emulator install and launch: see job result; artifact is a build-verified debug APK only."; fi
+            echo "- Unit tests, lint, manifest, package, SDK, alignment and signature: passed."
+            echo "- Emulator install/launch is a separate required job."
             echo "- Debug/test build, not a production-signed release."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload build-verified debug APK and checksum
-        if: always() && steps.verify_apk.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: lifeboat-sentinel-debug-${{ github.sha }}
@@ -117,3 +94,39 @@ jobs:
             android-agent/app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
           retention-days: 90
+
+  emulator:
+    name: Install and launch on Android 15 emulator
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download build-verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: lifeboat-sentinel-debug-${{ github.sha }}
+          path: artifacts
+      - name: Install and launch APK on Android 15 emulator
+        id: emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            test -s artifacts/app-debug.apk
+            adb install -r artifacts/app-debug.apk
+            adb shell am start -n com.tajoor621.lifeboat/.MainActivity
+            sleep 3
+            adb shell pidof com.tajoor621.lifeboat
+      - name: Capture emulator diagnostics on failure
+        if: failure()
+        run: |
+          adb devices -l || true
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
+          find "${ANDROID_AVD_HOME:-$HOME/.android/avd}" -maxdepth 2 -type f -name '*.log' -print -exec tail -n 120 {} \; 2>/dev/null || true
